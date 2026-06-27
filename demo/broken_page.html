@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Broken Page Demo</title>
+  <style>
+    .no-outline { outline: none; }
+  </style>
+</head>
+<body>
+  <h1>Welcome</h1>
+  <h3>Sub-heading skipping H2</h3>
+
+  <!-- Missing alt -->
+  <img src="banner.jpg">
+
+  <!-- Missing label -->
+  <div>
+    <span>Username:</span>
+    <input type="text" id="username">
+  </div>
+
+  <!-- Missing accessible name -->
+  <button class="no-outline">
+    <i class="icon-save"></i>
+  </button>
+
+  <!-- Generic link text -->
+  <a href="/more">Click here</a>
+
+  <!-- Table without th/caption -->
+  <table>
+    <tr><td>Row 1 Data</td></tr>
+  </table>
+
+  <!-- iframe without title -->
+  <iframe src="widget.html"></iframe>
+</body>
+</html>
