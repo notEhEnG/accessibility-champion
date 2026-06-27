@@ -51,7 +51,7 @@ Identify from file extension and syntax:
 For each pillar, collect all violations with file location (line number if possible):
 
 #### Pillar 1 — Perceivable
-- [ ] **Images**: Every `<img>` has non-empty `alt`. Decorative images have `alt=""` + `role="presentation"`.
+- [ ] **Images**: Every `<img>` has non-empty `alt`. Decorative images have `alt=""` + `role="presentation"`. Automated check flags generic alt text like "image" or "photo" for manual review.
 - [ ] **Video/audio**: `<video>` has `<track kind="captions">`, `<audio>` has transcript link nearby.
 - [ ] **Color contrast**: Text on background must meet 4.5:1 (normal) or 3:1 (large ≥18pt/14pt bold). UI components 3:1 minimum.
 - [ ] **Non-color cues**: Errors, required fields, links — never convey meaning by color alone. Must have icon, underline, or text label too.
@@ -88,7 +88,7 @@ For each pillar, collect all violations with file location (line number if possi
 #### Pillar 6 — Headings & Structure
 - [ ] **Single H1**: One `<h1>` per page/view.
 - [ ] **Heading hierarchy**: No skipped levels (H1 → H3 without H2). Headings convey structure, not style.
-- [ ] **Landmark regions**: Page has `<main>`, `<nav>`, `<header>`, `<footer>` (or ARIA equivalents). No landmark nesting violations.
+- [ ] **Landmark regions**: Page has `<main>`, `<nav>`, `<header>`, `<footer>` (or ARIA equivalents). The linter checks for the presence of a `<main>` landmark. No landmark nesting violations.
 - [ ] **Lists**: Navigation links, icon rows, tag groups use `<ul>/<li>` or `<ol>/<li>`. Don't use `<div>` soup for lists.
 - [ ] **Tables**: Data tables have `<th scope="col/row">` and `<caption>`. Never use tables for layout.
 

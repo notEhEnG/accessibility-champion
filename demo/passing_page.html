@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Passing Page</title>
+  <style>
+    :focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+  </style>
+</head>
+<body>
+  <a href="#main-content">Skip to main content</a>
+  <header>
+    <h1>Welcome</h1>
+  </header>
+  <main id="main-content">
+    <h2>Main Section</h2>
+    
+    <!-- Informative image with alt -->
+    <img src="banner.jpg" alt="A banner showing a sunset over the ocean">
+    
+    <!-- Decorative image -->
+    <img src="divider.jpg" alt="" role="presentation">
+
+    <!-- Form with labels and autocomplete -->
+    <form>
+      <div>
+        <label for="username">Username:</label>
+        <input type="text" id="username" autocomplete="username">
+      </div>
+      <button aria-label="Save settings">
+        <i class="icon-save"></i>
+      </button>
+    </form>
+
+    <!-- Meaningful link text -->
+    <a href="/more">Read more about accessibility</a>
+
+    <!-- Table with caption and headers -->
+    <table>
+      <caption>User Statistics</caption>
+      <tr>
+        <th scope="col">User</th>
+        <th scope="col">Visits</th>
+      </tr>
+      <tr>
+        <td>Alice</td>
+        <td>5</td>
+      </tr>
+    </table>
+
+    <iframe src="widget.html" title="Interactive widget"></iframe>
+  </main>
+</body>
+</html>

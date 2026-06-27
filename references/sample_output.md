@@ -7,16 +7,39 @@ Here is an example of what `a11y_lint.py` produces when run against a poorly acc
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Broken Page</title>
+  <title>Broken Page Demo</title>
+  <style>
+    .no-outline { outline: none; }
+  </style>
 </head>
 <body>
-  <img src="logo.png">
-  <input type="text" id="username">
-  <button></button>
-  <table role="presentation">
-     <tr><td>Data</td></tr>
+  <h1>Welcome</h1>
+  <h3>Sub-heading skipping H2</h3>
+
+  <!-- Missing alt -->
+  <img src="banner.jpg">
+
+  <!-- Missing label -->
+  <div>
+    <span>Username:</span>
+    <input type="text" id="username">
+  </div>
+
+  <!-- Missing accessible name -->
+  <button class="no-outline">
+    <i class="icon-save"></i>
+  </button>
+
+  <!-- Generic link text -->
+  <a href="/more">Click here</a>
+
+  <!-- Table without th/caption -->
+  <table>
+    <tr><td>Row 1 Data</td></tr>
   </table>
-  <a href="#">Click here</a>
+
+  <!-- iframe without title -->
+  <iframe src="widget.html"></iframe>
 </body>
 </html>
 ```
@@ -25,29 +48,61 @@ Here is an example of what `a11y_lint.py` produces when run against a poorly acc
 ```text
 === Accessibility Audit: demo/broken_page.html ===
 
-Score: 30/100  |  WCAG 2.2 AA
+Score: 0/100  |  WCAG 2.2 AA
 
 🔴 Critical (3 issues)
 
-  [image-alt] line 7: <img> is missing an alt attribute
+  [image-alt] line 14: <img> is missing an alt attribute
   → WCAG: 1.1.1 Non-text Content
   → Fix: Add alt="[description]" for informational images, or alt="" role="presentation" for decorative ones
 
-  [input-missing-label] line 8: <input id="username"> has no associated <label for="username">
+  [input-missing-label] line 19: <input id="username"> has no associated <label for="username">
   → WCAG: 3.3.2 Labels or Instructions
   → Fix: Add <label for="username">Descriptive label</label> before or wrapping the input
 
-  [button-name] line 9: <button> has no accessible name (empty inner text, no aria-label)
+  [button-name] line 23: <button> has no accessible name (empty inner text, no aria-label)
   → WCAG: 4.1.2 Name, Role, Value
   → Fix: Add aria-label="[action description]" or visible text content inside the button
 
-🟠 Serious (2 issues)
+🟠 Serious (5 issues)
 
   [html-has-lang] line 2: <html> tag is missing a lang attribute
   → WCAG: 3.1.1 Language of Page
   → Fix: Add lang="en" (or appropriate language code) to the <html> tag
 
-  [link-name] line 13: Link with generic text "Click here" — meaningless out of context
+  [focus-visible] line 6: outline: none/0 detected without a :focus-visible replacement
+  → WCAG: 2.4.7 Focus Visible
+  → Fix: Replace with :focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+  [link-name] line 28: Link with generic text "click here" — meaningless out of context
   → WCAG: 2.4.4 Link Purpose (In Context)
   → Fix: Use descriptive link text like "Read the accessibility guide" or add aria-label="..."
+
+  [table-th] line 31: Data table has no <th> header cells
+  → WCAG: 1.3.1 Info and Relationships
+  → Fix: Add <th scope='col'> for column headers and <th scope='row'> for row headers
+
+  [frame-title] line 36: <iframe> is missing a title attribute
+  → WCAG: 2.4.1 Bypass Blocks
+  → Fix: Add title="Description of iframe content" to the <iframe>
+
+🟡 Moderate (3 issues)
+
+  [missing-main] line 1: Page is missing a <main> landmark
+  → WCAG: 1.3.1 Info and Relationships
+  → Fix: Wrap the primary content of the page in a <main> tag
+
+  [heading-order] line 11: Heading level skipped: H1 → H3
+  → WCAG: 1.3.1 Info and Relationships
+  → Fix: Use H2 here, or restructure heading hierarchy to avoid gaps
+
+  [table-caption] line 31: Table is missing a <caption> describing its purpose
+  → WCAG: 1.3.1 Info and Relationships
+  → Fix: Add <caption>Table description</caption> as first child of <table>
+
+🔵 Minor (1 issue)
+
+  [input-autocomplete] line 19: Input field (type='text', id/name='username') requesting personal data is missing an autocomplete attribute
+  → WCAG: 1.3.5 Identify Input Purpose
+  → Fix: Add an appropriate autocomplete attribute (e.g., autocomplete="email")
 ```

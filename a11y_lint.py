@@ -2,207 +2,319 @@
 """
 accessibility-champion static linter
 Checks a single HTML file for common WCAG 2.2 AA issues.
-Usage: python3 scripts/a11y_lint.py path/to/file.html [--json]
-
-Returns a JSON report (or human-readable) with:
-  - score (0-100)
-  - violations list with severity, line, and suggested fix
 """
 
 import sys
 import json
 import re
+import argparse
 from pathlib import Path
+from html.parser import HTMLParser
 
 SEVERITY_WEIGHTS = {"critical": 20, "serious": 10, "moderate": 5, "minor": 2}
 
-def parse_args():
-    args = sys.argv[1:]
-    json_mode = "--json" in args
-    files = [a for a in args if not a.startswith("--")]
-    return files, json_mode
-
-def read_file(path):
-    return Path(path).read_text(encoding="utf-8")
-
-def find_all(pattern, text, flags=re.IGNORECASE):
-    return list(re.finditer(pattern, text, flags))
-
-def line_of(match, text):
-    return text[:match.start()].count("\n") + 1
-
-def check_html(source):
+def check_focus_visible(source):
+    """
+    Scans raw HTML/CSS source for outline suppression (outline: none or outline: 0)
+    without a corresponding :focus-visible or :focus fallback.
+    Returns a list of violation dictionaries.
+    """
     violations = []
-
-    # 1. Lang attribute on <html>
-    html_tag = re.search(r'<html([^>]*)>', source, re.IGNORECASE)
-    if html_tag:
-        if 'lang=' not in html_tag.group(1).lower():
-            violations.append({
-                "id": "html-has-lang",
-                "severity": "serious",
-                "line": line_of(html_tag, source),
-                "message": "<html> tag is missing a lang attribute",
-                "fix": 'Add lang="en" (or appropriate language code) to the <html> tag',
-                "wcag": "3.1.1 Language of Page"
-            })
-
-    # 2. Images without alt
-    for m in find_all(r'<img([^>]*)>', source):
-        attrs = m.group(1)
-        if 'alt=' not in attrs.lower():
-            violations.append({
-                "id": "image-alt",
-                "severity": "critical",
-                "line": line_of(m, source),
-                "message": '<img> is missing an alt attribute',
-                "fix": 'Add alt="[description]" for informational images, or alt="" role="presentation" for decorative ones',
-                "wcag": "1.1.1 Non-text Content"
-            })
-
-    # 3. Inputs without labels
-    for m in find_all(r'<input([^>]*)>', source):
-        attrs = m.group(1)
-        input_type = re.search(r'type=["\']?(\w+)', attrs, re.IGNORECASE)
-        itype = input_type.group(1).lower() if input_type else 'text'
-        if itype in ('hidden', 'submit', 'button', 'image', 'reset'):
-            continue
-        input_id = re.search(r'id=["\']([^"\']+)', attrs, re.IGNORECASE)
-        has_aria_label = 'aria-label=' in attrs.lower() or 'aria-labelledby=' in attrs.lower()
-        if not has_aria_label:
-            if not input_id:
-                violations.append({
-                    "id": "label-content-name-mismatch",
-                    "severity": "critical",
-                    "line": line_of(m, source),
-                    "message": f'<input type="{itype}"> has no id — cannot be associated with a <label>',
-                    "fix": 'Add a unique id attribute and a <label for="that-id"> element, or add aria-label="..."',
-                    "wcag": "1.3.1 Info and Relationships"
-                })
-            else:
-                iid = input_id.group(1)
-                label_pattern = rf'<label[^>]*for=["\']?{re.escape(iid)}["\']?'
-                if not re.search(label_pattern, source, re.IGNORECASE):
-                    violations.append({
-                        "id": "input-missing-label",
-                        "severity": "critical",
-                        "line": line_of(m, source),
-                        "message": f'<input id="{iid}"> has no associated <label for="{iid}">',
-                        "fix": f'Add <label for="{iid}">Descriptive label</label> before or wrapping the input',
-                        "wcag": "3.3.2 Labels or Instructions"
-                    })
-
-    # 4. Buttons with no accessible name
-    for m in find_all(r'<button([^>]*)>(.*?)</button>', source, re.DOTALL | re.IGNORECASE):
-        attrs = m.group(1)
-        inner = re.sub(r'<[^>]+>', '', m.group(2)).strip()
-        has_aria = 'aria-label=' in attrs.lower() or 'aria-labelledby=' in attrs.lower()
-        if not inner and not has_aria:
-            violations.append({
-                "id": "button-name",
-                "severity": "critical",
-                "line": line_of(m, source),
-                "message": '<button> has no accessible name (empty inner text, no aria-label)',
-                "fix": 'Add aria-label="[action description]" or visible text content inside the button',
-                "wcag": "4.1.2 Name, Role, Value"
-            })
-
-    # 5. outline:none / outline:0 without :focus-visible replacement
-    for m in find_all(r'outline\s*:\s*(?:none|0)\b', source):
-        # Check if it's inside a :focus-visible block (simple heuristic)
+    for m in re.finditer(r'outline\s*:\s*(?:none|0)\b', source):
+        line = source[:m.start()].count("\n") + 1
         context_start = max(0, m.start() - 200)
-        context = source[context_start:m.start()]
+        context_end = min(len(source), m.end() + 200)
+        context = source[context_start:context_end]
         if ':focus-visible' not in context and ':focus' not in context:
             violations.append({
                 "id": "focus-visible",
                 "severity": "serious",
-                "line": line_of(m, source),
+                "line": line,
                 "message": "outline: none/0 detected without a :focus-visible replacement",
                 "fix": "Replace with :focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }",
                 "wcag": "2.4.7 Focus Visible"
             })
+    return violations
 
-    # 6. Links with generic text
-    for m in find_all(r'<a([^>]*)>(click here|read more|here|learn more|more)</a>', source):
-        violations.append({
-            "id": "link-name",
-            "severity": "serious",
-            "line": line_of(m, source),
-            "message": f'Link with generic text "{m.group(2)}" — meaningless out of context',
-            "fix": 'Use descriptive link text like "Read the accessibility guide" or add aria-label="..."',
-            "wcag": "2.4.4 Link Purpose (In Context)"
-        })
+class A11yHTMLParser(HTMLParser):
+    def __init__(self, source):
+        super().__init__()
+        self.source = source
+        self.violations = []
+        self.tag_stack = []
+        
+        # State tracking for some checks
+        self.has_main = False
+        self.headings_seen = []
+        
+        self.table_depth = 0
+        self.current_table_has_th = False
+        self.current_table_has_caption = False
+        self.current_table_is_presentation = False
+        self.current_table_line = 0
+        
+        self.button_depth = 0
+        self.current_button = None # To track button text
+        
+        self.link_depth = 0
+        self.current_link = None
+        
+        self.label_fors = set()
+        self.inputs_needing_labels = []
 
-    # 7. Table without caption or th
-    for m in find_all(r'<table([^>]*)>', source):
-        end = source.find('</table>', m.start())
-        if end == -1:
-            continue
-        table_html = source[m.start():end]
-        has_caption = '<caption' in table_html.lower()
-        has_th = re.search(r'<th(\s[^>]*)?>',  table_html, re.IGNORECASE)
-        has_role_presentation = 'role="presentation"' in table_html.lower()
-        if not has_role_presentation:
-            if not has_th:
-                violations.append({
-                    "id": "table-th",
+    def handle_starttag(self, tag, attrs):
+        attrs_dict = dict(attrs)
+        attrs_lower = {k.lower(): (v.lower() if v else v) for k, v in attrs_dict.items()}
+        line, _ = self.getpos()
+        
+        self.tag_stack.append(tag)
+            
+        if tag == "main" or attrs_lower.get("role") == "main":
+            self.has_main = True
+            
+        # 1. Lang attribute on <html>
+        if tag == "html":
+            if "lang" not in attrs_lower:
+                self.violations.append({
+                    "id": "html-has-lang",
                     "severity": "serious",
-                    "line": line_of(m, source),
-                    "message": "Data table has no <th> header cells",
-                    "fix": "Add <th scope='col'> for column headers and <th scope='row'> for row headers",
-                    "wcag": "1.3.1 Info and Relationships"
-                })
-            if not has_caption:
-                violations.append({
-                    "id": "table-caption",
-                    "severity": "moderate",
-                    "line": line_of(m, source),
-                    "message": "Table is missing a <caption> describing its purpose",
-                    "fix": "Add <caption>Table description</caption> as first child of <table>",
-                    "wcag": "1.3.1 Info and Relationships"
+                    "line": line,
+                    "message": "<html> tag is missing a lang attribute",
+                    "fix": 'Add lang="en" (or appropriate language code) to the <html> tag',
+                    "wcag": "3.1.1 Language of Page"
                 })
 
-    # 8. Heading hierarchy: detect skipped levels
-    headings = find_all(r'<h([1-6])', source)
-    prev_level = 1
-    for m in headings:
-        level = int(m.group(1))
-        if level > prev_level + 1:
-            violations.append({
-                "id": "heading-order",
+        # 2. Images without alt and alt quality
+        if tag == "img":
+            if "alt" not in attrs_lower:
+                self.violations.append({
+                    "id": "image-alt",
+                    "severity": "critical",
+                    "line": line,
+                    "message": '<img> is missing an alt attribute',
+                    "fix": 'Add alt="[description]" for informational images, or alt="" role="presentation" for decorative ones',
+                    "wcag": "1.1.1 Non-text Content"
+                })
+            else:
+                alt_text = attrs_lower["alt"].strip()
+                if alt_text in ("image", "picture", "photo", "logo", "icon", "graphic"):
+                    self.violations.append({
+                        "id": "image-alt-quality",
+                        "severity": "moderate",
+                        "line": line,
+                        "message": f'<img> alt text "{alt_text}" is not descriptive (human review required)',
+                        "fix": 'Describe the purpose and meaning of the image, not what it is',
+                        "wcag": "1.1.1 Non-text Content"
+                    })
+
+        # 3. Inputs without labels and Autocomplete
+        if tag == "input":
+            itype = attrs_lower.get("type", "text")
+            if itype not in ('hidden', 'submit', 'button', 'image', 'reset'):
+                has_aria_label = "aria-label" in attrs_lower or "aria-labelledby" in attrs_lower
+                if not has_aria_label:
+                    input_id = attrs_dict.get("id")
+                    if not input_id:
+                        # Check if it's wrapped in a label
+                        if "label" not in self.tag_stack:
+                            self.violations.append({
+                                "id": "label-content-name-mismatch",
+                                "severity": "critical",
+                                "line": line,
+                                "message": f'<input type="{itype}"> has no id and is not wrapped in a <label> — cannot be associated with a <label>',
+                                "fix": 'Add a unique id attribute and a <label for="that-id"> element, wrap it in a <label>, or add aria-label="..."',
+                                "wcag": "1.3.1 Info and Relationships"
+                            })
+                    else:
+                        if "label" not in self.tag_stack:
+                            self.inputs_needing_labels.append({"id": input_id, "line": line, "itype": itype})
+
+            # Autocomplete check
+            name_id = (attrs_lower.get("name", "") + attrs_lower.get("id", "")).lower()
+            needs_autocomplete = False
+            if itype in ("email", "password", "tel"):
+                needs_autocomplete = True
+            elif itype == "text" and any(x in name_id for x in ("name", "address", "city", "zip", "phone", "email")):
+                needs_autocomplete = True
+
+            if needs_autocomplete and "autocomplete" not in attrs_lower:
+                self.violations.append({
+                    "id": "input-autocomplete",
+                    "severity": "minor",
+                    "line": line,
+                    "message": f"Input field (type='{itype}', id/name='{name_id}') requesting personal data is missing an autocomplete attribute",
+                    "fix": 'Add an appropriate autocomplete attribute (e.g., autocomplete="email")',
+                    "wcag": "1.3.5 Identify Input Purpose"
+                })
+
+        if tag == "label":
+            if "for" in attrs_dict:
+                self.label_fors.add(attrs_dict["for"])
+
+        # 4. Buttons with no accessible name
+        if tag == "button":
+            self.button_depth += 1
+            has_aria = "aria-label" in attrs_lower or "aria-labelledby" in attrs_lower
+            if self.button_depth == 1:
+                self.current_button = {"line": line, "has_aria": has_aria, "text": ""}
+                
+        # 6. Links with generic text
+        if tag == "a":
+            self.link_depth += 1
+            if self.link_depth == 1:
+                self.current_link = {"line": line, "text": ""}
+
+        # 7. Table checks
+        if tag == "table":
+            self.table_depth += 1
+            if self.table_depth == 1:
+                self.current_table_has_th = False
+                self.current_table_has_caption = False
+                self.current_table_is_presentation = (attrs_lower.get("role") == "presentation")
+                self.current_table_line = line
+        if tag == "th" and self.table_depth > 0:
+            self.current_table_has_th = True
+        if tag == "caption" and self.table_depth > 0:
+            self.current_table_has_caption = True
+
+        # 8. Heading hierarchy
+        if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
+            level = int(tag[1])
+            if self.headings_seen:
+                prev_level = self.headings_seen[-1]
+                if level > prev_level + 1:
+                    self.violations.append({
+                        "id": "heading-order",
+                        "severity": "moderate",
+                        "line": line,
+                        "message": f"Heading level skipped: H{prev_level} → H{level}",
+                        "fix": f"Use H{prev_level + 1} here, or restructure heading hierarchy to avoid gaps",
+                        "wcag": "1.3.1 Info and Relationships"
+                    })
+            self.headings_seen.append(level)
+
+        # 9. iframes without title
+        if tag == "iframe":
+            if "title" not in attrs_lower:
+                self.violations.append({
+                    "id": "frame-title",
+                    "severity": "serious",
+                    "line": line,
+                    "message": "<iframe> is missing a title attribute",
+                    "fix": 'Add title="Description of iframe content" to the <iframe>',
+                    "wcag": "2.4.1 Bypass Blocks"
+                })
+
+        # 10. autoplay media
+        if tag in ("video", "audio"):
+            if "autoplay" in attrs_lower:
+                self.violations.append({
+                    "id": "no-autoplay",
+                    "severity": "serious",
+                    "line": line,
+                    "message": "Media with autoplay — can disorient screen reader users and violate WCAG 1.4.2",
+                    "fix": "Remove autoplay, or add controls and a mechanism to pause/stop the media",
+                    "wcag": "1.4.2 Audio Control"
+                })
+
+    def handle_endtag(self, tag):
+        if self.tag_stack:
+            for i in range(len(self.tag_stack)-1, -1, -1):
+                if self.tag_stack[i] == tag:
+                    self.tag_stack = self.tag_stack[:i]
+                    break
+        
+        if tag == "button":
+            if self.button_depth == 1 and self.current_button:
+                if not self.current_button["has_aria"] and not self.current_button["text"].strip():
+                    self.violations.append({
+                        "id": "button-name",
+                        "severity": "critical",
+                        "line": self.current_button["line"],
+                        "message": '<button> has no accessible name (empty inner text, no aria-label)',
+                        "fix": 'Add aria-label="[action description]" or visible text content inside the button',
+                        "wcag": "4.1.2 Name, Role, Value"
+                    })
+                self.current_button = None
+            self.button_depth = max(0, self.button_depth - 1)
+            
+        if tag == "a":
+            if self.link_depth == 1 and self.current_link:
+                text = self.current_link["text"].strip().lower()
+                generic_texts = ("click here", "read more", "here", "learn more", "more")
+                if text in generic_texts:
+                    self.violations.append({
+                        "id": "link-name",
+                        "severity": "serious",
+                        "line": self.current_link["line"],
+                        "message": f'Link with generic text "{text}" — meaningless out of context',
+                        "fix": 'Use descriptive link text like "Read the accessibility guide" or add aria-label="..."',
+                        "wcag": "2.4.4 Link Purpose (In Context)"
+                    })
+                self.current_link = None
+            self.link_depth = max(0, self.link_depth - 1)
+
+        if tag == "table":
+            if self.table_depth == 1:
+                if not self.current_table_is_presentation:
+                    if not self.current_table_has_th:
+                        self.violations.append({
+                            "id": "table-th",
+                            "severity": "serious",
+                            "line": self.current_table_line,
+                            "message": "Data table has no <th> header cells",
+                            "fix": "Add <th scope='col'> for column headers and <th scope='row'> for row headers",
+                            "wcag": "1.3.1 Info and Relationships"
+                        })
+                    if not self.current_table_has_caption:
+                        self.violations.append({
+                            "id": "table-caption",
+                            "severity": "moderate",
+                            "line": self.current_table_line,
+                            "message": "Table is missing a <caption> describing its purpose",
+                            "fix": "Add <caption>Table description</caption> as first child of <table>",
+                            "wcag": "1.3.1 Info and Relationships"
+                        })
+            self.table_depth = max(0, self.table_depth - 1)
+
+    def handle_data(self, data):
+        if self.button_depth > 0 and self.current_button:
+            self.current_button["text"] += data
+        if self.link_depth > 0 and self.current_link:
+            self.current_link["text"] += data
+            
+    def finalize(self):
+        # Post-parse checks
+        if not self.has_main:
+            self.violations.append({
+                "id": "missing-main",
                 "severity": "moderate",
-                "line": line_of(m, source),
-                "message": f"Heading level skipped: H{prev_level} → H{level}",
-                "fix": f"Use H{prev_level + 1} here, or restructure heading hierarchy to avoid gaps",
+                "line": 1,
+                "message": "Page is missing a <main> landmark",
+                "fix": "Wrap the primary content of the page in a <main> tag",
                 "wcag": "1.3.1 Info and Relationships"
             })
-        prev_level = level
+        
+        # 3. Inputs missing labels (deferred check)
+        for inp in self.inputs_needing_labels:
+            if inp["id"] not in self.label_fors:
+                self.violations.append({
+                    "id": "input-missing-label",
+                    "severity": "critical",
+                    "line": inp["line"],
+                    "message": f'<input id="{inp["id"]}"> has no associated <label for="{inp["id"]}">',
+                    "fix": f'Add <label for="{inp["id"]}">Descriptive label</label> before or wrapping the input',
+                    "wcag": "3.3.2 Labels or Instructions"
+                })
+        
+        return self.violations
 
-    # 9. iframes without title
-    for m in find_all(r'<iframe([^>]*)>', source):
-        attrs = m.group(1)
-        if 'title=' not in attrs.lower():
-            violations.append({
-                "id": "frame-title",
-                "severity": "serious",
-                "line": line_of(m, source),
-                "message": "<iframe> is missing a title attribute",
-                "fix": 'Add title="Description of iframe content" to the <iframe>',
-                "wcag": "2.4.1 Bypass Blocks"
-            })
-
-    # 10. autoplay media
-    for m in find_all(r'<(?:video|audio)([^>]*)autoplay', source):
-        violations.append({
-            "id": "no-autoplay",
-            "severity": "serious",
-            "line": line_of(m, source),
-            "message": "Media with autoplay — can disorient screen reader users and violate WCAG 1.4.2",
-            "fix": "Remove autoplay, or add controls and a mechanism to pause/stop the media",
-            "wcag": "1.4.2 Audio Control"
-        })
-
-    return violations
+def check_html(source):
+    parser = A11yHTMLParser(source)
+    parser.feed(source)
+    violations = parser.finalize()
+    violations.extend(check_focus_visible(source))
+    return sorted(violations, key=lambda x: x["line"])
 
 def score(violations):
     deduction = sum(SEVERITY_WEIGHTS.get(v["severity"], 0) for v in violations)
@@ -230,27 +342,37 @@ def format_report(path, violations, s):
     return "\n".join(lines)
 
 def main():
-    files, json_mode = parse_args()
-    if not files:
-        print("Usage: python3 a11y_lint.py file.html [--json]")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="accessibility-champion static linter\nChecks HTML files for common WCAG 2.2 AA issues.", formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("files", nargs="+", help="HTML file(s) to lint")
+    parser.add_argument("--json", action="store_true", help="Output results in JSON format")
+    
+    args = parser.parse_args()
 
     results = []
-    for path in files:
+    has_errors = False
+    
+    for path in args.files:
         try:
-            source = read_file(path)
+            source = Path(path).read_text(encoding="utf-8")
         except FileNotFoundError:
             print(f"File not found: {path}", file=sys.stderr)
+            has_errors = True
             continue
 
         violations = check_html(source)
         s = score(violations)
         results.append({"file": path, "score": s, "violations": violations})
+        
+        if len(violations) > 0:
+            has_errors = True
 
-        if json_mode:
-            print(json.dumps(results, indent=2))
-        else:
+        if not args.json:
             print(format_report(path, violations, s))
+
+    if args.json:
+        print(json.dumps(results, indent=2))
+        
+    sys.exit(1 if has_errors else 0)
 
 if __name__ == "__main__":
     main()
