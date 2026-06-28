@@ -156,6 +156,8 @@ The Accessibility Score starts at 100. Deductions are grouped **by rule ID** so 
 
 No single rule can deduct more than **−30** points. The total score is still clamped to a minimum of 0.
 
+**Worked example:** Six `image-alt` violations (critical, base −20) use the 5+ multiplier: `min(20 × 2.0, 30) = −30` total for that rule — not `6 × 20 = −120`.
+
 ## Current Checks
 
 ### Pillar 1 — Perceivable
@@ -230,13 +232,23 @@ To add a new check, create a class extending `A11yRule` under `a11y_rules/` with
 
 ## AI Agent Integration
 
-[`SKILL.md`](./SKILL.md) is a workflow guide for AI coding agents (Cursor, Copilot, Claude, etc.) that run accessibility audits on your behalf. It documents when to lint, how to interpret JSON output, and which checks require human follow-up.
+[`SKILL.md`](./SKILL.md) is an **agent skill file** for Claude, Cursor, Copilot, and similar LLM coding agents. It tells agents how to run accessibility audits, interpret linter output, and know which checks still need human review.
+
+**Who uses it:** AI agents invoked to audit HTML/JSX/Vue/Svelte codebases, produce severity-ranked reports, or apply safe fixes.
+
+**Two workflows it defines:**
+
+| Workflow | When to use |
+|----------|-------------|
+| **FULL_AUDIT** | User shares code or a page — run `a11y-lint` on `.html` first, then agent manual checks for contrast, keyboard, ARIA behavior, and intent |
+| **AUTO_FIX** | User wants fixes applied — apply copy-paste-safe patches from violation `fix` fields; escalate `[manual]` items |
 
 **Update `SKILL.md` when you:**
 
 - Add or rename rule IDs
 - Add or change CLI flags (e.g. `--fragment`, `--axe`)
 - Change the violation JSON schema or scoring model
+- Change FULL_AUDIT or AUTO_FIX steps
 
 Agents load `SKILL.md` as context; keeping it in sync with the linter avoids stale audit instructions.
 

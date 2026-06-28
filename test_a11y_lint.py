@@ -1,12 +1,14 @@
 import json
 import subprocess
+import sys
 import unittest
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
 from a11y_axe import dedupe_violations, map_axe_to_violations, merge_axe_results
 from a11y_focus import check_focus_visible
-from a11y_lint import check_html, rule_deduction, score
+from a11y_lint import check_html, main, rule_deduction, score
 
 class TestA11yLint(unittest.TestCase):
     def setUp(self):
@@ -464,6 +466,17 @@ class TestA11yLint(unittest.TestCase):
         violations = check_html(passing.read_text(encoding="utf-8"))
         merged = merge_axe_results(passing, violations)
         self.assertEqual(merged, violations)
+
+    def test_cli_axe_without_node_warns_and_exits_clean(self):
+        passing_path = self.demo_dir / "passing_page.html"
+        stderr = StringIO()
+        with patch("a11y_axe.is_node_available", return_value=False):
+            with patch("sys.argv", ["a11y_lint", "--axe", str(passing_path)]):
+                with patch("sys.stderr", stderr):
+                    with self.assertRaises(SystemExit) as exited:
+                        main()
+        self.assertEqual(exited.exception.code, 0)
+        self.assertIn("Node.js not found", stderr.getvalue())
 
 
 if __name__ == "__main__":
