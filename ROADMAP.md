@@ -116,7 +116,7 @@ Close the largest gaps between `SKILL.md` promises and linter behavior using pur
 - [x] 20 new unit tests (2 per rule minimum)
 - [x] Updated `demo/broken_page.html` + `demo/expected_output.txt`
 - [x] README rule table updated
-- [ ] SKILL.md checkboxes aligned with implemented rules
+- [x] SKILL.md checkboxes aligned with implemented rules
 
 ### Success metrics
 
