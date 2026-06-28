@@ -258,7 +258,7 @@ Agents load `SKILL.md` as context; keeping it in sync with the linter avoids sta
 python3 -m unittest test_a11y_lint -v
 ```
 
-The suite covers fixture pages, individual rules, CLI behavior, fragment mode, scoring caps, axe mapping, and edge cases (46 tests). **Every new rule must include tests** that verify both failing and passing markup.
+The suite covers fixture pages, individual rules, CLI behavior, fragment mode, scoring caps, axe mapping, and edge cases (54 tests). **Every new rule must include tests** that verify both failing and passing markup.
 
 With dev dependencies installed:
 

@@ -478,6 +478,54 @@ class TestA11yLint(unittest.TestCase):
         self.assertEqual(exited.exception.code, 0)
         self.assertIn("Node.js not found", stderr.getvalue())
 
+    def test_focus_pseudo_suppression_skipped(self):
+        source = """
+        <style>
+          .bad { outline: none; }
+          button:focus { outline: none; }
+          button:focus-visible { outline: 2px solid blue; }
+        </style>
+        """
+        violations = check_focus_visible(source)
+        self.assertEqual(len(violations), 1)
+        self.assertEqual(violations[0]["id"], "focus-visible")
+
+    def test_aria_invalid_describedby_missing_target(self):
+        source = """<html lang="en"><main>
+            <input aria-invalid="true" aria-describedby="ghost-err">
+        </main></html>"""
+        violations = [v for v in check_html(source) if v["id"] == "aria-invalid-no-desc"]
+        self.assertEqual(len(violations), 1)
+        self.assertIn("missing element", violations[0]["message"])
+
+    def test_placeholder_with_matching_label_for_passes(self):
+        source = """<html lang="en"><main>
+            <label for="search">Search</label>
+            <input id="search" type="text" placeholder="Query">
+        </main></html>"""
+        self.assertNotIn("placeholder-as-label", [v["id"] for v in check_html(source)])
+
+    def test_radio_without_name_skips_fieldset_group(self):
+        source = """<html lang="en"><main>
+            <input type="radio">
+            <input type="radio">
+        </main></html>"""
+        self.assertNotIn("form-group-fieldset", [v["id"] for v in check_html(source)])
+
+    def test_tabindex_non_numeric_ignored(self):
+        source = """<html lang="en"><main><div tabindex="abc">X</div></main></html>"""
+        self.assertNotIn("tabindex-positive", [v["id"] for v in check_html(source)])
+
+    def test_link_name_exact_here(self):
+        source = """<html lang="en"><main><a href="/docs">here</a></main></html>"""
+        self.assertIn("link-name", [v["id"] for v in check_html(source)])
+
+    def test_video_with_captions_track_passes(self):
+        source = """<html lang="en"><main>
+            <video src="a.mp4"><track kind="captions" src="c.vtt" srclang="en"></video>
+        </main></html>"""
+        self.assertNotIn("video-captions", [v["id"] for v in check_html(source)])
+
 
 if __name__ == "__main__":
     unittest.main()
