@@ -18,35 +18,73 @@ python3 a11y_lint.py path/to/your/file.html --json
 
 ## Output Format
 
+### Text Report
 The default text output provides a score out of 100, followed by a list of accessibility violations grouped by severity. Each violation includes the exact line number, a description of the issue, a suggested fix, and the corresponding WCAG criteria.
 
 If violations are found, the script exits with status code `1`. If no violations are found (or only minor/passing items exist), it exits with `0`.
+
+### JSON Report
+Using the `--json` flag returns a JSON array of file audit results. Example output:
+
+```json
+[
+  {
+    "file": "demo/broken_page.html",
+    "score": 0,
+    "violations": [
+      {
+        "id": "html-has-lang",
+        "severity": "serious",
+        "line": 2,
+        "message": "<html> tag is missing a lang attribute",
+        "fix": "Add lang=\"en\" (or appropriate language code) to the <html> tag",
+        "wcag": "3.1.1 Language of Page"
+      },
+      {
+        "id": "image-alt",
+        "severity": "critical",
+        "line": 14,
+        "message": "<img> is missing an alt attribute",
+        "fix": "Add alt=\"[description]\" for informational images, or alt=\"\" role=\"presentation\" for decorative ones",
+        "wcag": "1.1.1 Non-text Content"
+      }
+    ]
+  }
+]
+```
 
 ## Scoring Model
 
 The Accessibility Score starts at 100 and deducts points based on the severity of the issues found:
 - **Critical (-20 pts):** Completely blocks access for a disability group (e.g., missing `alt` on informational images, no form labels).
-- **Serious (-10 pts):** Significantly degrades experience (e.g., missing `lang` attribute, missing `title` on `iframe`).
-- **Moderate (-5 pts):** Creates friction but has workarounds (e.g., skipped heading levels, missing `<main>` landmark).
-- **Minor (-2 pts):** Best-practice or AAA recommendations (e.g., missing autocomplete on personal data fields).
+- **Serious (-10 pts):** Significantly degrades experience (e.g., missing `lang` attribute, missing `title` on `iframe`, duplicate IDs, missing `aria-describedby` target).
+- **Moderate (-5 pts):** Creates friction but has workarounds (e.g., skipped heading levels, missing `<main>` landmark, ungrouped radios/checkboxes).
+- **Minor (-2 pts):** Best-practice or AAA recommendations (e.g., missing autocomplete on personal data fields, missing landmark areas).
 
 The score is clamped to a minimum of 0.
 
 ## Current Checks
 
 The linter currently performs the following checks:
-- `<html lang="en">` presence
-- `<img>` missing `alt` attributes or using generic/low-quality `alt` text (e.g., "image", "photo")
-- Form `<input>` elements missing associated labels or `id` attributes
-- Form inputs requesting personal data missing `autocomplete` attributes
-- `<button>` elements missing accessible names (via inner text or `aria-label`)
-- Links (`<a>`) using generic text (e.g., "click here", "read more")
-- Tables missing `<th>` header cells or `<caption>` elements
-- Skipped heading hierarchy levels (e.g., jumping from `<h1>` to `<h3>`)
-- `<iframe>` elements missing `title` attributes
-- Media elements (`<video>`, `<audio>`) with `autoplay` enabled
-- Presence of a `<main>` landmark
-- Focus visibility suppression (`outline: none` without a `:focus-visible` fallback)
+- **Pillar 1: Perceivable**
+  - `<html lang="en">` presence
+  - `<img>` missing `alt` attributes or using generic/low-quality `alt` text (e.g., "image", "photo")
+  - Media elements (`<video>`, `<audio>`) with `autoplay` enabled
+- **Pillar 2: Operable**
+  - `<button>` elements missing accessible names (via inner text, `aria-label`, or child `<img alt="...">` / `<svg><title>...</title></svg>`)
+  - Links (`<a>`) using generic text (e.g., "click here", "read more") or generic prefix phrases (e.g., "read more about...")
+  - Focus visibility suppression (`outline: none` without a `:focus-visible` fallback)
+- **Pillar 3: Understandable**
+  - Form `<input>` elements missing associated labels or `id` attributes
+  - Form inputs requesting personal data missing `autocomplete` attributes
+- **Pillar 4: Robust & Semantic Structure**
+  - Duplicate `id` attribute detection
+  - Grouped radio/checkbox inputs (inputs sharing a `name`) must be wrapped in a `<fieldset>` with a `<legend>`
+  - Inputs with `aria-describedby` must point to target IDs that exist in the document
+  - Skipped heading hierarchy levels (e.g., jumping from `<h1>` to `<h3>`)
+  - `<iframe>` elements missing `title` attributes
+  - Tables missing `<th>` header cells or `<caption>` elements
+  - Presence of `<main>`, `<header>`, `<nav>`, and `<footer>` landmark regions on full HTML pages
 
 ## Limitations
 

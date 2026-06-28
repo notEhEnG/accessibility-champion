@@ -10,6 +10,7 @@ import re
 import argparse
 from pathlib import Path
 from html.parser import HTMLParser
+from collections import defaultdict
 
 SEVERITY_WEIGHTS = {"critical": 20, "serious": 10, "moderate": 5, "minor": 2}
 
@@ -53,8 +54,12 @@ class A11yHTMLParser(HTMLParser):
         self.current_table_is_presentation = False
         self.current_table_line = 0
         
+        # Button accessible name tracking
         self.button_depth = 0
         self.current_button = None # To track button text
+        self.in_svg_depth = 0
+        self.in_title_depth = 0
+        self.current_title_text = ""
         
         self.link_depth = 0
         self.current_link = None
@@ -62,16 +67,51 @@ class A11yHTMLParser(HTMLParser):
         self.label_fors = set()
         self.inputs_needing_labels = []
 
+        # New state variables for enhancements
+        self.ids_seen = set()
+        self.duplicate_ids = set() # set of tuples (id, line)
+        self.fieldset_stack = [] # stack of dicts: {"has_legend": bool}
+        self.radio_checkbox_inputs = [] # list of dicts: {"name": name, "line": line, "type": type, "valid": bool}
+        self.described_by_checks = [] # list of dicts: {"described_by": str, "line": line}
+        
+        # Landmark completeness tracking
+        self.is_full_page = False
+        self.has_header = False
+        self.has_nav = False
+        self.has_footer = False
+
     def handle_starttag(self, tag, attrs):
         attrs_dict = dict(attrs)
         attrs_lower = {k.lower(): (v.lower() if v else v) for k, v in attrs_dict.items()}
         line, _ = self.getpos()
         
         self.tag_stack.append(tag)
-            
+        
+        # Duplicate ID Detection
+        id_val = attrs_dict.get("id")
+        if id_val:
+            if id_val in self.ids_seen:
+                self.duplicate_ids.add((id_val, line))
+            self.ids_seen.add(id_val)
+
+        if tag in ("html", "body"):
+            self.is_full_page = True
+
+        if tag == "header" or attrs_lower.get("role") == "banner":
+            self.has_header = True
+        if tag == "nav" or attrs_lower.get("role") == "navigation":
+            self.has_nav = True
+        if tag == "footer" or attrs_lower.get("role") == "contentinfo":
+            self.has_footer = True
         if tag == "main" or attrs_lower.get("role") == "main":
             self.has_main = True
             
+        # Fieldset/Legend state tracking
+        if tag == "fieldset":
+            self.fieldset_stack.append({"has_legend": False})
+        if tag == "legend" and self.fieldset_stack:
+            self.fieldset_stack[-1]["has_legend"] = True
+
         # 1. Lang attribute on <html>
         if tag == "html":
             if "lang" not in attrs_lower:
@@ -86,6 +126,12 @@ class A11yHTMLParser(HTMLParser):
 
         # 2. Images without alt and alt quality
         if tag == "img":
+            # Image within button accumulates its alt as accessible text
+            if self.button_depth > 0 and self.current_button:
+                alt = attrs_dict.get("alt", "")
+                if alt:
+                    self.current_button["text"] += " " + alt
+
             if "alt" not in attrs_lower:
                 self.violations.append({
                     "id": "image-alt",
@@ -106,6 +152,13 @@ class A11yHTMLParser(HTMLParser):
                         "fix": 'Describe the purpose and meaning of the image, not what it is',
                         "wcag": "1.1.1 Non-text Content"
                     })
+
+        # SVG/Title state tracking for accessible names
+        if tag == "svg":
+            self.in_svg_depth += 1
+        if tag == "title":
+            self.in_title_depth += 1
+            self.current_title_text = ""
 
         # 3. Inputs without labels and Autocomplete
         if tag == "input":
@@ -146,6 +199,24 @@ class A11yHTMLParser(HTMLParser):
                     "fix": 'Add an appropriate autocomplete attribute (e.g., autocomplete="email")',
                     "wcag": "1.3.5 Identify Input Purpose"
                 })
+
+            # Fieldset/Legend grouping check for radio/checkbox
+            if itype in ("radio", "checkbox"):
+                name = attrs_lower.get("name")
+                if name:
+                    in_fieldset = len(self.fieldset_stack) > 0
+                    has_legend = self.fieldset_stack[-1]["has_legend"] if in_fieldset else False
+                    self.radio_checkbox_inputs.append({
+                        "name": name,
+                        "line": line,
+                        "type": itype,
+                        "valid": in_fieldset and has_legend
+                    })
+
+        if tag in ("input", "select", "textarea"):
+            described_by = attrs_dict.get("aria-describedby")
+            if described_by:
+                self.described_by_checks.append({"described_by": described_by, "line": line})
 
         if tag == "label":
             if "for" in attrs_dict:
@@ -224,6 +295,17 @@ class A11yHTMLParser(HTMLParser):
                     self.tag_stack = self.tag_stack[:i]
                     break
         
+        if tag == "fieldset" and self.fieldset_stack:
+            self.fieldset_stack.pop()
+
+        if tag == "title":
+            self.in_title_depth = max(0, self.in_title_depth - 1)
+            if self.in_title_depth == 0 and self.in_svg_depth > 0 and self.button_depth > 0 and self.current_button:
+                self.current_button["text"] += " " + self.current_title_text
+                
+        if tag == "svg":
+            self.in_svg_depth = max(0, self.in_svg_depth - 1)
+
         if tag == "button":
             if self.button_depth == 1 and self.current_button:
                 if not self.current_button["has_aria"] and not self.current_button["text"].strip():
@@ -231,7 +313,7 @@ class A11yHTMLParser(HTMLParser):
                         "id": "button-name",
                         "severity": "critical",
                         "line": self.current_button["line"],
-                        "message": '<button> has no accessible name (empty inner text, no aria-label)',
+                        "message": '<button> has no accessible name (empty inner text, no aria-label, and no descriptive child images/svgs)',
                         "fix": 'Add aria-label="[action description]" or visible text content inside the button',
                         "wcag": "4.1.2 Name, Role, Value"
                     })
@@ -241,13 +323,30 @@ class A11yHTMLParser(HTMLParser):
         if tag == "a":
             if self.link_depth == 1 and self.current_link:
                 text = self.current_link["text"].strip().lower()
-                generic_texts = ("click here", "read more", "here", "learn more", "more")
-                if text in generic_texts:
+                generic_prefixes = ("click here", "read more", "learn more")
+                generic_exacts = ("here", "more")
+                is_generic = False
+                matched_phrase = ""
+                
+                for prefix in generic_prefixes:
+                    if text == prefix or text.startswith(prefix + " "):
+                        is_generic = True
+                        matched_phrase = prefix
+                        break
+                
+                if not is_generic:
+                    for exact in generic_exacts:
+                        if text == exact:
+                            is_generic = True
+                            matched_phrase = exact
+                            break
+                            
+                if is_generic:
                     self.violations.append({
                         "id": "link-name",
                         "severity": "serious",
                         "line": self.current_link["line"],
-                        "message": f'Link with generic text "{text}" — meaningless out of context',
+                        "message": f'Link with generic text "{text}" (matches phrase "{matched_phrase}") — meaningless out of context',
                         "fix": 'Use descriptive link text like "Read the accessibility guide" or add aria-label="..."',
                         "wcag": "2.4.4 Link Purpose (In Context)"
                     })
@@ -279,7 +378,10 @@ class A11yHTMLParser(HTMLParser):
 
     def handle_data(self, data):
         if self.button_depth > 0 and self.current_button:
-            self.current_button["text"] += data
+            if self.in_title_depth > 0 and self.in_svg_depth > 0:
+                self.current_title_text += data
+            elif not self.in_svg_depth:
+                self.current_button["text"] += data
         if self.link_depth > 0 and self.current_link:
             self.current_link["text"] += data
             
@@ -294,6 +396,78 @@ class A11yHTMLParser(HTMLParser):
                 "fix": "Wrap the primary content of the page in a <main> tag",
                 "wcag": "1.3.1 Info and Relationships"
             })
+            
+        # Optional Landmark checks for full pages
+        if self.is_full_page:
+            if not self.has_header:
+                self.violations.append({
+                    "id": "missing-header-landmark",
+                    "severity": "minor",
+                    "line": 1,
+                    "message": "Page is missing a <header> or role='banner' landmark (manual review recommended)",
+                    "fix": "Wrap page headers in a <header> element or add role='banner'",
+                    "wcag": "1.3.1 Info and Relationships"
+                })
+            if not self.has_nav:
+                self.violations.append({
+                    "id": "missing-nav-landmark",
+                    "severity": "minor",
+                    "line": 1,
+                    "message": "Page is missing a <nav> or role='navigation' landmark (manual review recommended)",
+                    "fix": "Wrap page navigation in a <nav> element or add role='navigation'",
+                    "wcag": "1.3.1 Info and Relationships"
+                })
+            if not self.has_footer:
+                self.violations.append({
+                    "id": "missing-footer-landmark",
+                    "severity": "minor",
+                    "line": 1,
+                    "message": "Page is missing a <footer> or role='contentinfo' landmark (manual review recommended)",
+                    "fix": "Wrap page footer in a <footer> element or add role='contentinfo'",
+                    "wcag": "1.3.1 Info and Relationships"
+                })
+
+        # Duplicate ID check
+        for id_val, line in sorted(self.duplicate_ids, key=lambda x: x[1]):
+            self.violations.append({
+                "id": "duplicate-id",
+                "severity": "serious",
+                "line": line,
+                "message": f"Duplicate id attribute value '{id_val}' detected",
+                "fix": "Ensure all id attributes on the page are unique",
+                "wcag": "4.1.1 Parsing"
+            })
+
+        # Fieldset/Legend checks for grouped radio/checkboxes
+        groups = defaultdict(list)
+        for item in self.radio_checkbox_inputs:
+            groups[(item["type"], item["name"])].append(item)
+        for (itype, name), items in groups.items():
+            if len(items) > 1:
+                for item in items:
+                    if not item["valid"]:
+                        self.violations.append({
+                            "id": "form-group-fieldset",
+                            "severity": "moderate",
+                            "line": item["line"],
+                            "message": f"Grouped {itype} inputs (name='{name}') should be wrapped in a <fieldset> with a <legend>",
+                            "fix": f"Wrap the group of {itype} inputs in a <fieldset> and add a descriptive <legend>",
+                            "wcag": "1.3.1 Info and Relationships"
+                        })
+
+        # aria-describedby checks
+        for check in self.described_by_checks:
+            targets = check["described_by"].split()
+            for target in targets:
+                if target not in self.ids_seen:
+                    self.violations.append({
+                        "id": "aria-describedby-missing-target",
+                        "severity": "serious",
+                        "line": check["line"],
+                        "message": f"aria-describedby target '{target}' does not exist in the document",
+                        "fix": f"Ensure there is an element with id='{target}' to provide the description",
+                        "wcag": "1.3.1 Info and Relationships"
+                    })
         
         # 3. Inputs missing labels (deferred check)
         for inp in self.inputs_needing_labels:

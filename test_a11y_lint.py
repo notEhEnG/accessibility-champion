@@ -47,7 +47,6 @@ class TestA11yLint(unittest.TestCase):
 
     def test_wrapped_labels(self):
         source = """<label>Username: <input type="text" autocomplete="username"></label>"""
-        # We need <html> and <main> to avoid those errors
         full_source = f"<html lang='en'><main>{source}</main></html>"
         violations = check_html(full_source)
         violation_ids = [v["id"] for v in violations]
@@ -76,6 +75,99 @@ class TestA11yLint(unittest.TestCase):
         link_name_violations = [v for v in violations if v["id"] == "link-name"]
         self.assertEqual(len(link_name_violations), 1)
         self.assertIn("read more", link_name_violations[0]["message"])
+
+    def test_button_accessible_names_advanced(self):
+        # SVG title check
+        source_svg = """<html lang="en"><main><button><svg><title>Close Menu</title></svg></button></main></html>"""
+        violations = check_html(source_svg)
+        violation_ids = [v["id"] for v in violations]
+        self.assertNotIn("button-name", violation_ids)
+
+        # Image alt check
+        source_img = """<html lang="en"><main><button><img src="icon.png" alt="Submit Settings"></button></main></html>"""
+        violations_img = check_html(source_img)
+        violation_ids_img = [v["id"] for v in violations_img]
+        self.assertNotIn("button-name", violation_ids_img)
+
+    def test_broad_link_purpose(self):
+        source = """<html lang="en"><main>
+            <a href="#">Click here to read the report</a>
+            <a href="#">Learn more about accessibility guidelines</a>
+        </main></html>"""
+        violations = check_html(source)
+        violation_ids = [v["id"] for v in violations]
+        self.assertIn("link-name", violation_ids)
+        link_violations = [v for v in violations if v["id"] == "link-name"]
+        self.assertEqual(len(link_violations), 2)
+
+    def test_duplicate_id_detection(self):
+        source = """<html lang="en"><main>
+            <div id="duplicate-me">First</div>
+            <div id="duplicate-me">Second</div>
+        </main></html>"""
+        violations = check_html(source)
+        violation_ids = [v["id"] for v in violations]
+        self.assertIn("duplicate-id", violation_ids)
+
+    def test_form_group_fieldset_legend(self):
+        # Invalid group
+        source_invalid = """<html lang="en"><main>
+            <input type="radio" name="color" value="red">
+            <input type="radio" name="color" value="blue">
+        </main></html>"""
+        violations = check_html(source_invalid)
+        self.assertIn("form-group-fieldset", [v["id"] for v in violations])
+
+        # Valid group
+        source_valid = """<html lang="en"><main>
+            <fieldset>
+                <legend>Choose a color</legend>
+                <input type="radio" name="color" value="red">
+                <input type="radio" name="color" value="blue">
+            </fieldset>
+        </main></html>"""
+        violations_valid = check_html(source_valid)
+        self.assertNotIn("form-group-fieldset", [v["id"] for v in violations_valid])
+
+    def test_aria_describedby_missing_target(self):
+        # Missing target
+        source_missing = """<html lang="en"><main>
+            <input type="text" id="username" aria-describedby="non-existent-desc">
+        </main></html>"""
+        violations = check_html(source_missing)
+        self.assertIn("aria-describedby-missing-target", [v["id"] for v in violations])
+
+        # Existing target
+        source_exists = """<html lang="en"><main>
+            <input type="text" id="username" aria-describedby="existent-desc">
+            <div id="existent-desc">Help text</div>
+        </main></html>"""
+        violations_exists = check_html(source_exists)
+        self.assertNotIn("aria-describedby-missing-target", [v["id"] for v in violations_exists])
+
+    def test_landmark_completeness(self):
+        # Full page missing landmarks
+        source_missing = """<html lang="en"><body><main>Content</main></body></html>"""
+        violations = check_html(source_missing)
+        violation_ids = [v["id"] for v in violations]
+        self.assertIn("missing-header-landmark", violation_ids)
+        self.assertIn("missing-nav-landmark", violation_ids)
+        self.assertIn("missing-footer-landmark", violation_ids)
+
+        # Full page with landmarks
+        source_present = """<html lang="en">
+        <body>
+            <header>Header</header>
+            <nav>Nav</nav>
+            <main>Content</main>
+            <footer>Footer</footer>
+        </body>
+        </html>"""
+        violations_present = check_html(source_present)
+        violation_ids_present = [v["id"] for v in violations_present]
+        self.assertNotIn("missing-header-landmark", violation_ids_present)
+        self.assertNotIn("missing-nav-landmark", violation_ids_present)
+        self.assertNotIn("missing-footer-landmark", violation_ids_present)
 
     def test_check_focus_visible_regex(self):
         source = """
