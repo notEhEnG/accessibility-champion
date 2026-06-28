@@ -1,31 +1,50 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Broken Page Demo</title>
   <style>
     .no-outline { outline: none; }
   </style>
 </head>
 <body>
+  <nav>
+    <a href="/">Home</a>
+  </nav>
+
   <h1>Welcome</h1>
   <h3>Sub-heading skipping H2</h3>
 
   <!-- Missing alt -->
   <img src="banner.jpg">
 
+  <!-- Placeholder used as label -->
+  <div>
+    <input type="text" id="email" placeholder="Email address" tabindex="1">
+  </div>
+
   <!-- Missing label -->
   <div>
     <span>Username:</span>
-    <input type="text" id="username">
+    <input type="text" id="username" aria-invalid="true">
   </div>
 
-  <!-- Missing accessible name -->
-  <button class="no-outline">
-    <i class="icon-save"></i>
-  </button>
+  <form>
+    <!-- Missing accessible name and explicit button type -->
+    <button class="no-outline">
+      <i class="icon-save"></i>
+    </button>
+  </form>
 
   <!-- Generic link text -->
   <a href="/more">Click here</a>
+
+  <!-- Opens new window without warning -->
+  <a href="https://example.com" target="_blank">External site</a>
+
+  <!-- Video without captions -->
+  <video src="promo.mp4" controls></video>
+
+  <!-- Audio without transcript -->
+  <audio src="podcast.mp3" controls></audio>
 
   <!-- Table without th/caption -->
   <table>

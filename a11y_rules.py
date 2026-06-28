@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from a11y_context import ParseContext, TagAttrs
 
 GENERIC_ALT_TEXT = frozenset({"image", "picture", "photo", "logo", "icon", "graphic"})
@@ -9,6 +11,8 @@ GENERIC_LINK_PREFIXES = ("click here", "read more", "learn more")
 GENERIC_LINK_EXACTS = ("here", "more")
 AUTOCOMPLETE_HINTS = ("name", "address", "city", "zip", "phone", "email")
 LABELLED_INPUT_TYPES = frozenset({"hidden", "submit", "button", "image", "reset"})
+NEW_WINDOW_HINTS = ("new window", "new tab", "opens in")
+SKIP_LINK_HREF_HINTS = ("main", "content", "skip")
 
 
 class A11yRule:
@@ -182,6 +186,23 @@ class FormLabelRule(A11yRule):
         if has_aria:
             return
 
+        if attrs.has("placeholder") and tag in ("input", "textarea"):
+            if tag == "input":
+                itype = attrs.get_lower("type") or "text"
+                if itype in LABELLED_INPUT_TYPES:
+                    return
+            else:
+                itype = tag
+            if not ctx.in_tag("label"):
+                element_id = attrs.get("id")
+                ctx.placeholder_controls.append({
+                    "id": element_id,
+                    "line": line,
+                    "tag": tag,
+                    "itype": itype,
+                })
+            return
+
         if tag == "input":
             itype = attrs.get_lower("type") or "text"
             if itype in LABELLED_INPUT_TYPES:
@@ -290,17 +311,30 @@ class FormGroupRule(A11yRule):
                 )
 
 
-class AriaDescribedByRule(A11yRule):
+class AriaReferenceRule(A11yRule):
+    """Validates aria-describedby and aria-labelledby reference existing ids."""
+
     def on_starttag(self, ctx: ParseContext, tag: str, attrs: TagAttrs, line: int) -> None:
-        if tag not in ("input", "select", "textarea"):
+        if tag not in ("input", "select", "textarea", "button", "a", "div", "span"):
             return
+
         described_by = attrs.get("aria-describedby")
         if described_by:
-            ctx.described_by_checks.append({"described_by": described_by, "line": line})
+            ctx.described_by_checks.append({"ids": described_by, "line": line, "attr": "aria-describedby"})
+
+        labelled_by = attrs.get("aria-labelledby")
+        if labelled_by:
+            ctx.labelled_by_checks.append({"ids": labelled_by, "line": line})
+
+        if attrs.get_lower("aria-invalid") == "true":
+            ctx.aria_invalid_checks.append({
+                "line": line,
+                "described_by": attrs.get("aria-describedby"),
+            })
 
     def finalize(self, ctx: ParseContext) -> None:
         for check in ctx.described_by_checks:
-            for target in check["described_by"].split():
+            for target in check["ids"].split():
                 if target not in ctx.ids_seen:
                     ctx.add_violation(
                         id="aria-describedby-missing-target",
@@ -310,6 +344,41 @@ class AriaDescribedByRule(A11yRule):
                         fix=f"Ensure there is an element with id='{target}' to provide the description",
                         wcag="1.3.1 Info and Relationships",
                     )
+
+        for check in ctx.labelled_by_checks:
+            for target in check["ids"].split():
+                if target not in ctx.ids_seen:
+                    ctx.add_violation(
+                        id="aria-labelledby-target",
+                        severity="serious",
+                        line=check["line"],
+                        message=f"aria-labelledby target '{target}' does not exist in the document",
+                        fix=f"Ensure there is an element with id='{target}' to provide the accessible name",
+                        wcag="4.1.2 Name, Role, Value",
+                    )
+
+        for check in ctx.aria_invalid_checks:
+            described_by = check["described_by"]
+            if not described_by:
+                ctx.add_violation(
+                    id="aria-invalid-no-desc",
+                    severity="serious",
+                    line=check["line"],
+                    message='aria-invalid="true" without aria-describedby pointing to an error message',
+                    fix='Add aria-describedby="error-id" referencing a visible error element',
+                    wcag="3.3.1 Error Identification",
+                )
+                continue
+            targets = described_by.split()
+            if not targets or any(target not in ctx.ids_seen for target in targets):
+                ctx.add_violation(
+                    id="aria-invalid-no-desc",
+                    severity="serious",
+                    line=check["line"],
+                    message="aria-invalid=\"true\" with aria-describedby pointing to a missing element",
+                    fix="Ensure aria-describedby references an existing id that contains the error message",
+                    wcag="3.3.1 Error Identification",
+                )
 
 
 class ButtonNameRule(A11yRule):
@@ -376,7 +445,17 @@ class LinkNameRule(A11yRule):
             return
         ctx.link_depth += 1
         if ctx.link_depth == 1:
-            ctx.current_link = {"line": line, "text": ""}
+            ctx.current_link = {
+                "line": line,
+                "text": "",
+                "href": (attrs.get("href") or "").strip().lower(),
+                "target_blank": attrs.get_lower("target") == "_blank",
+                "aria_label": (attrs.get("aria-label") or "").lower(),
+                "title": (attrs.get("title") or "").lower(),
+            }
+            href = ctx.current_link["href"]
+            if href.startswith("#") and any(hint in href for hint in SKIP_LINK_HREF_HINTS):
+                ctx.has_skip_link = True
 
     def on_endtag(self, ctx: ParseContext, tag: str) -> None:
         if tag != "a":
@@ -401,6 +480,9 @@ class LinkNameRule(A11yRule):
                         matched_phrase = prefix
                         break
 
+            if "skip" in text and ctx.current_link["href"].startswith("#"):
+                ctx.has_skip_link = True
+
             if is_generic:
                 ctx.add_violation(
                     id="link-name",
@@ -410,6 +492,21 @@ class LinkNameRule(A11yRule):
                     fix='Use descriptive link text like "Read the accessibility guide" or add aria-label="..."',
                     wcag="2.4.4 Link Purpose (In Context)",
                 )
+
+            if ctx.current_link["target_blank"]:
+                combined = " ".join(
+                    filter(None, (text, ctx.current_link["aria_label"], ctx.current_link["title"]))
+                )
+                if not any(hint in combined for hint in NEW_WINDOW_HINTS):
+                    ctx.add_violation(
+                        id="target-blank-no-warning",
+                        severity="minor",
+                        line=ctx.current_link["line"],
+                        message='Link with target="_blank" lacks an accessible new-window warning',
+                        fix='Add visible text, aria-label, or title indicating the link opens in a new window/tab',
+                        wcag="3.2.5 Change on Request",
+                    )
+
             ctx.current_link = None
         ctx.link_depth = max(0, ctx.link_depth - 1)
 
@@ -464,17 +561,44 @@ class TableRule(A11yRule):
 
 class MediaRule(A11yRule):
     def on_starttag(self, ctx: ParseContext, tag: str, attrs: TagAttrs, line: int) -> None:
-        if tag not in ("video", "audio"):
+        if tag == "video":
+            ctx.video_depth += 1
+            if ctx.video_depth == 1:
+                ctx.current_video = {"line": line, "has_captions": False}
             return
-        if attrs.has("autoplay"):
+
+        if tag == "track" and ctx.video_depth > 0 and ctx.current_video:
+            if attrs.get_lower("kind") == "captions":
+                ctx.current_video["has_captions"] = True
+            return
+
+        if tag == "audio":
+            ctx.audio_lines.append(line)
+            if attrs.has("autoplay"):
+                ctx.add_violation(
+                    id="no-autoplay",
+                    severity="serious",
+                    line=line,
+                    message="Media with autoplay — can disorient screen reader users and violate WCAG 1.4.2",
+                    fix="Remove autoplay, or add controls and a mechanism to pause/stop the media",
+                    wcag="1.4.2 Audio Control",
+                )
+
+    def on_endtag(self, ctx: ParseContext, tag: str) -> None:
+        if tag != "video":
+            return
+        if ctx.video_depth == 1 and ctx.current_video and not ctx.current_video["has_captions"]:
             ctx.add_violation(
-                id="no-autoplay",
+                id="video-captions",
                 severity="serious",
-                line=line,
-                message="Media with autoplay — can disorient screen reader users and violate WCAG 1.4.2",
-                fix="Remove autoplay, or add controls and a mechanism to pause/stop the media",
-                wcag="1.4.2 Audio Control",
+                line=ctx.current_video["line"],
+                message="<video> is missing a <track kind=\"captions\"> element",
+                fix='Add <track kind="captions" src="captions.vtt" srclang="en" label="English"> inside the video',
+                wcag="1.2.2 Captions (Prerecorded)",
             )
+        if ctx.current_video and ctx.video_depth == 1:
+            ctx.current_video = None
+        ctx.video_depth = max(0, ctx.video_depth - 1)
 
 
 class FrameRule(A11yRule):
@@ -488,6 +612,130 @@ class FrameRule(A11yRule):
                 fix='Add title="Description of iframe content" to the <iframe>',
                 wcag="2.4.1 Bypass Blocks",
             )
+
+
+class PlaceholderRule(A11yRule):
+    def finalize(self, ctx: ParseContext) -> None:
+        for control in ctx.placeholder_controls:
+            element_id = control["id"]
+            if element_id and element_id in ctx.label_fors:
+                continue
+            ctx.add_violation(
+                id="placeholder-as-label",
+                severity="critical",
+                line=control["line"],
+                message=f'<{control["tag"]}> uses placeholder text as the only label — placeholders are not accessible labels',
+                fix="Add a visible <label> or aria-label; use placeholder only for format hints",
+                wcag="3.3.2 Labels or Instructions",
+            )
+
+
+class DocumentTitleRule(A11yRule):
+    def on_starttag(self, ctx: ParseContext, tag: str, attrs: TagAttrs, line: int) -> None:
+        if tag == "head":
+            ctx.head_depth += 1
+        if tag == "title" and ctx.head_depth > 0:
+            ctx.document_title_depth += 1
+            ctx.document_title = ""
+
+    def on_endtag(self, ctx: ParseContext, tag: str) -> None:
+        if tag == "title":
+            ctx.document_title_depth = max(0, ctx.document_title_depth - 1)
+        if tag == "head":
+            ctx.head_depth = max(0, ctx.head_depth - 1)
+
+    def on_data(self, ctx: ParseContext, data: str) -> None:
+        if ctx.document_title_depth > 0:
+            ctx.document_title += data
+
+    def finalize(self, ctx: ParseContext) -> None:
+        if ctx.fragment_mode or not ctx.is_full_page:
+            return
+        if not ctx.document_title.strip():
+            ctx.add_violation(
+                id="document-title",
+                severity="serious",
+                line=1,
+                message="Full page is missing a non-empty <title> element in <head>",
+                fix="Add <title>Page name — Site name</title> inside <head>",
+                wcag="2.4.2 Page Titled",
+            )
+
+
+class SkipLinkRule(A11yRule):
+    def finalize(self, ctx: ParseContext) -> None:
+        if ctx.fragment_mode or not ctx.is_full_page or not ctx.has_nav:
+            return
+        if not ctx.has_skip_link:
+            ctx.add_violation(
+                id="skip-link",
+                severity="moderate",
+                line=1,
+                message='Page with navigation is missing a "skip to main content" link',
+                fix='Add <a href="#main-content">Skip to main content</a> as the first focusable element',
+                wcag="2.4.1 Bypass Blocks",
+            )
+
+
+class AudioTranscriptRule(A11yRule):
+    def finalize(self, ctx: ParseContext) -> None:
+        if not ctx.source or not ctx.audio_lines:
+            return
+        for audio_line in ctx.audio_lines:
+            for match in re.finditer(r"<audio\b", ctx.source, re.IGNORECASE):
+                if ctx.source[: match.start()].count("\n") + 1 != audio_line:
+                    continue
+                window = ctx.source[match.end() : match.end() + 500].lower()
+                if "transcript" not in window:
+                    ctx.add_violation(
+                        id="audio-transcript",
+                        severity="serious",
+                        line=audio_line,
+                        message="<audio> element has no nearby transcript link or text (heuristic)",
+                        fix='Provide a transcript link or text adjacent to the audio, e.g. <a href="transcript.html">Transcript</a>',
+                        wcag="1.2.1 Audio-only and Video-only (Prerecorded)",
+                    )
+                break
+
+
+class TabIndexRule(A11yRule):
+    def on_starttag(self, ctx: ParseContext, tag: str, attrs: TagAttrs, line: int) -> None:
+        tabindex = attrs.get("tabindex")
+        if tabindex is None:
+            return
+        try:
+            value = int(tabindex.strip())
+        except ValueError:
+            return
+        if value > 0:
+            ctx.add_violation(
+                id="tabindex-positive",
+                severity="moderate",
+                line=line,
+                message=f'Positive tabindex="{value}" disrupts natural keyboard navigation order',
+                fix="Remove tabindex or use tabindex=\"0\"; reorder the DOM instead of overriding tab order",
+                wcag="2.4.3 Focus Order",
+            )
+
+
+class ButtonTypeRule(A11yRule):
+    def on_starttag(self, ctx: ParseContext, tag: str, attrs: TagAttrs, line: int) -> None:
+        if tag == "form":
+            ctx.form_depth += 1
+            return
+        if tag == "button" and ctx.form_depth > 0 and not attrs.has("type"):
+            ctx.add_violation(
+                id="button-type-missing",
+                severity="moderate",
+                line=line,
+                message='<button> inside <form> is missing an explicit type attribute (defaults to submit)',
+                fix='Add type="button" for actions or type="submit" for form submission',
+                wcag="4.1.2 Name, Role, Value",
+            )
+
+    def on_endtag(self, ctx: ParseContext, tag: str) -> None:
+        if tag == "form":
+            ctx.form_depth = max(0, ctx.form_depth - 1)
 
 
 class DuplicateIdRule(A11yRule):
@@ -506,17 +754,23 @@ class DuplicateIdRule(A11yRule):
 def all_rules() -> list[A11yRule]:
     return [
         DocumentRule(),
+        DocumentTitleRule(),
         LandmarkRule(),
+        SkipLinkRule(),
         HeadingRule(),
         ImageRule(),
         FormLabelRule(),
+        PlaceholderRule(),
         AutocompleteRule(),
         FormGroupRule(),
-        AriaDescribedByRule(),
+        AriaReferenceRule(),
         ButtonNameRule(),
+        ButtonTypeRule(),
         LinkNameRule(),
         TableRule(),
         MediaRule(),
+        AudioTranscriptRule(),
         FrameRule(),
+        TabIndexRule(),
         DuplicateIdRule(),
     ]

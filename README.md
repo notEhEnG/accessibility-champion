@@ -118,6 +118,9 @@ The score is clamped to a minimum of 0.
 | `image-alt` | `<img>` missing `alt` attribute |
 | `image-alt-quality` | Generic `alt` text (`image`, `photo`, `logo`, etc.) |
 | `no-autoplay` | `<video>` / `<audio>` with `autoplay` |
+| `video-captions` | `<video>` missing `<track kind="captions">` |
+| `audio-transcript` | `<audio>` without nearby transcript link/text (heuristic) |
+| `document-title` | Full page missing non-empty `<title>` in `<head>` |
 
 ### Pillar 2 — Operable
 
@@ -126,6 +129,10 @@ The score is clamped to a minimum of 0.
 | `button-name` | `<button>` with no accessible name (text, `aria-label`, child `<img alt>`, or `<svg><title>`) |
 | `link-name` | `<a>` with generic text (`click here`, `read more`, `here`, `more`, etc.) |
 | `focus-visible` | `outline: none` / `outline: 0` in CSS without a matching `:focus` / `:focus-visible` fallback rule |
+| `skip-link` | Full page with `<nav>` missing a skip-to-main-content link |
+| `tabindex-positive` | Any `tabindex` value greater than 0 |
+| `button-type-missing` | `<button>` inside `<form>` without explicit `type` attribute |
+| `target-blank-no-warning` | `target="_blank"` without accessible new-window warning |
 
 Focus-outline analysis parses CSS rule blocks inside `<style>` elements and inline `style=""` attributes. It matches base selectors (e.g., `.btn`) to companion `:focus-visible` rules that restore a visible outline.
 
@@ -135,7 +142,9 @@ Focus-outline analysis parses CSS rule blocks inside `<style>` elements and inli
 |---------|----------------|
 | `input-unlabelled` | Form control has no `id`, is not wrapped in `<label>`, and has no `aria-label` |
 | `input-missing-label` | Control has an `id` but no matching `<label for="...">` |
+| `placeholder-as-label` | `placeholder` used without a real label or `aria-label` |
 | `input-autocomplete` | Personal-data inputs (`email`, `password`, `tel`, or `name`/`address`-like fields) missing `autocomplete` |
+| `aria-invalid-no-desc` | `aria-invalid="true"` without `aria-describedby` pointing to an error element |
 
 Applies to `<input>`, `<select>`, and `<textarea>`.
 
@@ -146,6 +155,7 @@ Applies to `<input>`, `<select>`, and `<textarea>`.
 | `duplicate-id` | Duplicate `id` attribute values |
 | `form-group-fieldset` | Multiple radio/checkbox inputs sharing a `name` not wrapped in `<fieldset>` + `<legend>` (one violation per group) |
 | `aria-describedby-missing-target` | `aria-describedby` references an `id` that does not exist |
+| `aria-labelledby-target` | `aria-labelledby` references an `id` that does not exist |
 | `heading-order` | Skipped heading levels (e.g., `<h1>` → `<h3>`) |
 | `heading-single-h1` | More than one `<h1>` on a full page |
 | `frame-title` | `<iframe>` missing `title` |
@@ -175,7 +185,7 @@ To add a new check, create a class extending `A11yRule` in `a11y_rules.py` with 
 python3 -m unittest test_a11y_lint -v
 ```
 
-The suite covers fixture pages, individual rules, CLI behavior, fragment mode, and edge cases. **Every new rule must include tests** that verify both failing and passing markup.
+The suite covers fixture pages, individual rules, CLI behavior, fragment mode, and edge cases (30 tests). **Every new rule must include tests** that verify both failing and passing markup.
 
 ## Limitations
 
@@ -208,6 +218,10 @@ Always supplement this tool with screen reader testing, keyboard navigation audi
 - `demo/passing_page.html` — Fixture demonstrating passing checks
 - `test_a11y_lint.py` — Automated test suite
 - `SKILL.md` — AI agent integration guidelines for accessibility audit workflows
+
+## Roadmap
+
+See [ROADMAP.md](./ROADMAP.md) for the phased plan to expand coverage toward full WCAG-aligned auditing (static rules → CSS analysis → axe-core integration).
 
 ## Contributing
 

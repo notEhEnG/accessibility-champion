@@ -4,70 +4,106 @@
 Score: 0/100  |  WCAG 2.2 AA
 
 
-🔴 Critical (3 issues)
+🔴 Critical (4 issues)
 
-  [image-alt] line 14: <img> is missing an alt attribute
+  [image-alt] line 17: <img> is missing an alt attribute
   → WCAG: 1.1.1 Non-text Content
   → Fix: Add alt="[description]" for informational images, or alt="" role="presentation" for decorative ones
 
-  [input-missing-label] line 19: <input id="username"> has no associated <label for="username">
+  [placeholder-as-label] line 21: <input> uses placeholder text as the only label — placeholders are not accessible labels
   → WCAG: 3.3.2 Labels or Instructions
-  → Fix: Add <label for="username">Descriptive label</label> before or wrapping the input
+  → Fix: Add a visible <label> or aria-label; use placeholder only for format hints
 
-  [button-name] line 23: <button> has no accessible name (empty inner text, no aria-label, and no descriptive child images/svgs)
+  [input-missing-label] line 27: <input id="username"> has no associated <label for="username">
+  → WCAG: 3.3.2 Labels or Instructions
+  → Fix: Add <label for="username">Descriptive label</label> before or wrapping the control
+
+  [button-name] line 32: <button> has no accessible name (empty inner text, no aria-label, and no descriptive child images/svgs)
   → WCAG: 4.1.2 Name, Role, Value
   → Fix: Add aria-label="[action description]" or visible text content inside the button
 
-🟠 Serious (5 issues)
+🟠 Serious (9 issues)
+
+  [document-title] line 1: Full page is missing a non-empty <title> element in <head>
+  → WCAG: 2.4.2 Page Titled
+  → Fix: Add <title>Page name — Site name</title> inside <head>
 
   [html-has-lang] line 2: <html> tag is missing a lang attribute
   → WCAG: 3.1.1 Language of Page
   → Fix: Add lang="en" (or appropriate language code) to the <html> tag
 
-  [focus-visible] line 6: outline: none/0 detected without a :focus-visible replacement
+  [focus-visible] line 4: outline: none/0 detected without a :focus-visible replacement
   → WCAG: 2.4.7 Focus Visible
   → Fix: Replace with :focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 
-  [link-name] line 28: Link with generic text "click here" (matches phrase "click here") — meaningless out of context
+  [aria-invalid-no-desc] line 27: aria-invalid="true" without aria-describedby pointing to an error message
+  → WCAG: 3.3.1 Error Identification
+  → Fix: Add aria-describedby="error-id" referencing a visible error element
+
+  [link-name] line 38: Link with generic text "click here" (matches phrase "click here") — meaningless out of context
   → WCAG: 2.4.4 Link Purpose (In Context)
   → Fix: Use descriptive link text like "Read the accessibility guide" or add aria-label="..."
 
-  [table-th] line 31: Data table has no <th> header cells
+  [video-captions] line 44: <video> is missing a <track kind="captions"> element
+  → WCAG: 1.2.2 Captions (Prerecorded)
+  → Fix: Add <track kind="captions" src="captions.vtt" srclang="en" label="English"> inside the video
+
+  [audio-transcript] line 47: <audio> element has no nearby transcript link or text (heuristic)
+  → WCAG: 1.2.1 Audio-only and Video-only (Prerecorded)
+  → Fix: Provide a transcript link or text adjacent to the audio, e.g. <a href="transcript.html">Transcript</a>
+
+  [table-th] line 50: Data table has no <th> header cells
   → WCAG: 1.3.1 Info and Relationships
   → Fix: Add <th scope='col'> for column headers and <th scope='row'> for row headers
 
-  [frame-title] line 36: <iframe> is missing a title attribute
+  [frame-title] line 55: <iframe> is missing a title attribute
   → WCAG: 2.4.1 Bypass Blocks
   → Fix: Add title="Description of iframe content" to the <iframe>
 
-🟡 Moderate (3 issues)
+🟡 Moderate (6 issues)
 
   [missing-main] line 1: Page is missing a <main> landmark
   → WCAG: 1.3.1 Info and Relationships
   → Fix: Wrap the primary content of the page in a <main> tag
 
-  [heading-order] line 11: Heading level skipped: H1 → H3
+  [skip-link] line 1: Page with navigation is missing a "skip to main content" link
+  → WCAG: 2.4.1 Bypass Blocks
+  → Fix: Add <a href="#main-content">Skip to main content</a> as the first focusable element
+
+  [heading-order] line 14: Heading level skipped: H1 → H3
   → WCAG: 1.3.1 Info and Relationships
   → Fix: Use H2 here, or restructure heading hierarchy to avoid gaps
 
-  [table-caption] line 31: Table is missing a <caption> describing its purpose
+  [tabindex-positive] line 21: Positive tabindex="1" disrupts natural keyboard navigation order
+  → WCAG: 2.4.3 Focus Order
+  → Fix: Remove tabindex or use tabindex="0"; reorder the DOM instead of overriding tab order
+
+  [button-type-missing] line 32: <button> inside <form> is missing an explicit type attribute (defaults to submit)
+  → WCAG: 4.1.2 Name, Role, Value
+  → Fix: Add type="button" for actions or type="submit" for form submission
+
+  [table-caption] line 50: Table is missing a <caption> describing its purpose
   → WCAG: 1.3.1 Info and Relationships
   → Fix: Add <caption>Table description</caption> as first child of <table>
 
-🔵 Minor (4 issues)
+🔵 Minor (5 issues)
 
   [missing-header-landmark] line 1: Page is missing a <header> or role='banner' landmark (manual review recommended)
   → WCAG: 1.3.1 Info and Relationships
   → Fix: Wrap page headers in a <header> element or add role='banner'
 
-  [missing-nav-landmark] line 1: Page is missing a <nav> or role='navigation' landmark (manual review recommended)
-  → WCAG: 1.3.1 Info and Relationships
-  → Fix: Wrap page navigation in a <nav> element or add role='navigation'
-
   [missing-footer-landmark] line 1: Page is missing a <footer> or role='contentinfo' landmark (manual review recommended)
   → WCAG: 1.3.1 Info and Relationships
   → Fix: Wrap page footer in a <footer> element or add role='contentinfo'
 
-  [input-autocomplete] line 19: Input field (type='text', id/name='username') requesting personal data is missing an autocomplete attribute
+  [input-autocomplete] line 21: Input field (type='text', id/name='email') requesting personal data is missing an autocomplete attribute
   → WCAG: 1.3.5 Identify Input Purpose
   → Fix: Add an appropriate autocomplete attribute (e.g., autocomplete="email")
+
+  [input-autocomplete] line 27: Input field (type='text', id/name='username') requesting personal data is missing an autocomplete attribute
+  → WCAG: 1.3.5 Identify Input Purpose
+  → Fix: Add an appropriate autocomplete attribute (e.g., autocomplete="email")
+
+  [target-blank-no-warning] line 41: Link with target="_blank" lacks an accessible new-window warning
+  → WCAG: 3.2.5 Change on Request
+  → Fix: Add visible text, aria-label, or title indicating the link opens in a new window/tab

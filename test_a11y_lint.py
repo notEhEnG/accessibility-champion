@@ -30,6 +30,17 @@ class TestA11yLint(unittest.TestCase):
         # Check for new heuristics
         self.assertIn("missing-main", violation_ids)
         self.assertIn("input-autocomplete", violation_ids)
+
+        # Phase 1 rules
+        self.assertIn("document-title", violation_ids)
+        self.assertIn("skip-link", violation_ids)
+        self.assertIn("placeholder-as-label", violation_ids)
+        self.assertIn("video-captions", violation_ids)
+        self.assertIn("audio-transcript", violation_ids)
+        self.assertIn("aria-invalid-no-desc", violation_ids)
+        self.assertIn("button-type-missing", violation_ids)
+        self.assertIn("target-blank-no-warning", violation_ids)
+        self.assertIn("tabindex-positive", violation_ids)
         
         # Score should be low
         s = score(violations)
@@ -156,10 +167,12 @@ class TestA11yLint(unittest.TestCase):
 
         # Full page with landmarks
         source_present = """<html lang="en">
+        <head><title>Test</title></head>
         <body>
+            <a href="#main">Skip to main content</a>
             <header>Header</header>
             <nav>Nav</nav>
-            <main>Content</main>
+            <main id="main">Content</main>
             <footer>Footer</footer>
         </body>
         </html>"""
@@ -241,6 +254,49 @@ class TestA11yLint(unittest.TestCase):
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["score"], 0)
         self.assertGreater(len(data[0]["violations"]), 0)
+
+    def test_placeholder_as_label(self):
+        source = """<html lang="en"><main><input type="text" placeholder="Search"></main></html>"""
+        violations = check_html(source)
+        self.assertIn("placeholder-as-label", [v["id"] for v in violations])
+        self.assertNotIn("input-unlabelled", [v["id"] for v in violations])
+
+    def test_document_title(self):
+        source = """<html lang="en"><head></head><body><main></main></body></html>"""
+        self.assertIn("document-title", [v["id"] for v in check_html(source)])
+
+    def test_skip_link_with_nav(self):
+        source = """<html lang="en"><head><title>T</title></head><body>
+            <nav><a href="/">Home</a></nav><main></main></body></html>"""
+        self.assertIn("skip-link", [v["id"] for v in check_html(source)])
+
+    def test_video_captions(self):
+        source = """<html lang="en"><main><video src="a.mp4"></video></main></html>"""
+        self.assertIn("video-captions", [v["id"] for v in check_html(source)])
+
+    def test_audio_transcript(self):
+        source = """<html lang="en"><main><audio src="a.mp3"></audio></main></html>"""
+        self.assertIn("audio-transcript", [v["id"] for v in check_html(source)])
+
+    def test_aria_labelledby_missing_target(self):
+        source = """<html lang="en"><main><button aria-labelledby="missing-id">X</button></main></html>"""
+        self.assertIn("aria-labelledby-target", [v["id"] for v in check_html(source)])
+
+    def test_aria_invalid_no_desc(self):
+        source = """<html lang="en"><main><input id="x" aria-invalid="true"></main></html>"""
+        self.assertIn("aria-invalid-no-desc", [v["id"] for v in check_html(source)])
+
+    def test_tabindex_positive(self):
+        source = """<html lang="en"><main><div tabindex="2">Bad</div></main></html>"""
+        self.assertIn("tabindex-positive", [v["id"] for v in check_html(source)])
+
+    def test_button_type_missing(self):
+        source = """<html lang="en"><main><form><button>Go</button></form></main></html>"""
+        self.assertIn("button-type-missing", [v["id"] for v in check_html(source)])
+
+    def test_target_blank_warning(self):
+        source = """<html lang="en"><main><a href="https://x.com" target="_blank">Site</a></main></html>"""
+        self.assertIn("target-blank-no-warning", [v["id"] for v in check_html(source)])
 
     def test_cli_missing_file(self):
         result = subprocess.run(

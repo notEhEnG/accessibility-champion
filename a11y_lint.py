@@ -50,7 +50,10 @@ def _detect_fragment_mode(source: str, fragment: bool | None) -> bool:
 
 
 def check_html(source: str, fragment: bool | None = None) -> list[dict]:
-    ctx = ParseContext(fragment_mode=_detect_fragment_mode(source, fragment))
+    ctx = ParseContext(
+        source=source,
+        fragment_mode=_detect_fragment_mode(source, fragment),
+    )
     rules = all_rules()
     parser = A11yHTMLParser(ctx, rules)
     parser.feed(source)

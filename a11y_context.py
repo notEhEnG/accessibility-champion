@@ -53,6 +53,7 @@ def violation(
 class ParseContext:
     """Mutable state shared across accessibility rules during HTML parsing."""
 
+    source: str = ""
     fragment_mode: bool = False
     violations: list[dict] = field(default_factory=list)
     tag_stack: list[str] = field(default_factory=list)
@@ -71,11 +72,25 @@ class ParseContext:
 
     label_fors: set[str] = field(default_factory=set)
     inputs_needing_labels: list[dict] = field(default_factory=list)
+    placeholder_controls: list[dict] = field(default_factory=list)
 
     fieldset_stack: list[dict] = field(default_factory=list)
     radio_checkbox_groups: dict[tuple[str, str], dict] = field(default_factory=dict)
 
     described_by_checks: list[dict] = field(default_factory=list)
+    labelled_by_checks: list[dict] = field(default_factory=list)
+    aria_invalid_checks: list[dict] = field(default_factory=list)
+
+    head_depth: int = 0
+    document_title_depth: int = 0
+    document_title: str = ""
+
+    has_skip_link: bool = False
+    form_depth: int = 0
+
+    video_depth: int = 0
+    current_video: dict | None = None
+    audio_lines: list[int] = field(default_factory=list)
 
     button_depth: int = 0
     current_button: dict | None = None
