@@ -74,3 +74,16 @@ class AriaReferenceRule(A11yRule):
                     fix="Ensure aria-describedby references an existing id that contains the error message",
                     wcag="3.3.1 Error Identification",
                 )
+
+
+class DuplicateIdRule(A11yRule):
+    def finalize(self, ctx: ParseContext) -> None:
+        for id_val, line in sorted(ctx.aria.duplicate_ids, key=lambda item: item[1]):
+            ctx.add_violation(
+                id="duplicate-id",
+                severity="serious",
+                line=line,
+                message=f"Duplicate id attribute value '{id_val}' detected",
+                fix="Ensure all id attributes on the page are unique",
+                wcag="4.1.1 Parsing",
+            )

@@ -1,22 +1,57 @@
+![PyPI](https://img.shields.io/pypi/v/accessibility-champion)
+![GitHub release](https://img.shields.io/github/v/release/notEhEnG/accessibility-champion)
+![GitHub stars](https://img.shields.io/github/stars/notEhEnG/accessibility-champion)
+
 # Accessibility Champion
 
 Accessibility Champion is a lightweight, static accessibility linter for HTML files. It helps identify common WCAG 2.2 AA violations in your markup and generates an accessibility score to help developers triage and fix issues quickly.
 
 The linter uses Python's `HTMLParser` with a **rule-registry architecture**: a thin dispatcher forwards parse events to focused rule classes, keeping each check isolated and easy to extend.
 
+## Installation
+
+Install from PyPI (Python 3.8+):
+
+```bash
+pip install accessibility-champion
+```
+
+Optional extras:
+
+```bash
+pip install accessibility-champion[css]   # tinycss2 for CSS heuristics (roadmap)
+pip install accessibility-champion[dev]     # build + twine for local publishing
+```
+
+After install, use the `a11y-lint` console script:
+
+```bash
+a11y-lint path/to/your/file.html
+```
+
+Install from a cloned repo (development):
+
+```bash
+git clone https://github.com/notEhEnG/accessibility-champion.git
+cd accessibility-champion
+pip install -e .
+```
+
 ## Quick Start
 
 Run the linter against any HTML file to get a human-readable text report:
 
 ```bash
+a11y-lint path/to/your/file.html
+# or, from a source checkout:
 python3 a11y_lint.py path/to/your/file.html
 ```
 
 Try the included demo fixtures:
 
 ```bash
-python3 a11y_lint.py demo/broken_page.html   # exits 1 — many violations
-python3 a11y_lint.py demo/passing_page.html  # exits 0 — score 100/100
+a11y-lint demo/broken_page.html   # exits 1 — many violations
+a11y-lint demo/passing_page.html  # exits 0 — score 100/100
 ```
 
 ### CLI Options
@@ -31,10 +66,10 @@ python3 a11y_lint.py demo/passing_page.html  # exits 0 — score 100/100
 
 ```bash
 # JSON output for CI
-python3 a11y_lint.py path/to/your/file.html --json
+a11y-lint path/to/your/file.html --json
 
 # Lint a partial HTML snippet (e.g., a component template)
-python3 a11y_lint.py path/to/fragment.html --fragment
+a11y-lint path/to/fragment.html --fragment
 ```
 
 ### Exit Codes
@@ -230,3 +265,7 @@ See [ROADMAP.md](./ROADMAP.md) for the phased plan to expand coverage toward ful
 3. Add tests to `test_a11y_lint.py` for both failing and passing markup.
 4. Prefer the HTML parser over regular expressions for structural checks.
 5. Update this README when adding new rule IDs, CLI flags, or architectural changes.
+
+## License
+
+MIT License — see [LICENSE](./LICENSE).

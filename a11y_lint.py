@@ -11,7 +11,7 @@ import argparse
 from pathlib import Path
 from html.parser import HTMLParser
 
-from a11y_context import ParseContext, TagAttrs
+from a11y_context import ParseContext, TagAttrs, Violation
 from a11y_focus import check_focus_visible
 from a11y_rules import all_rules
 
@@ -49,7 +49,7 @@ def _detect_fragment_mode(source: str, fragment: bool | None) -> bool:
     return not re.search(r"<(?:html|body)\b", source, re.IGNORECASE)
 
 
-def check_html(source: str, fragment: bool | None = None) -> list[dict]:
+def check_html(source: str, fragment: bool | None = None) -> list[Violation]:
     ctx = ParseContext(
         source=source,
         fragment_mode=_detect_fragment_mode(source, fragment),
@@ -64,7 +64,7 @@ def check_html(source: str, fragment: bool | None = None) -> list[dict]:
     return sorted(violations, key=lambda item: item["line"])
 
 
-def score(violations):
+def score(violations: list[Violation]) -> int:
     deduction = sum(SEVERITY_WEIGHTS.get(v["severity"], 0) for v in violations)
     return max(0, 100 - deduction)
 

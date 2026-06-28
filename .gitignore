@@ -8,4 +8,5 @@ venv/
 
 # Local planning artifacts and archives (not for publication)
 ROADMAP.md
+phases/
 accessibility-champion.zip

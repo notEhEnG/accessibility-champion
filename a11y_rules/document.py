@@ -59,16 +59,3 @@ class DocumentTitleRule(A11yRule):
                 fix="Add <title>Page name — Site name</title> inside <head>",
                 wcag="2.4.2 Page Titled",
             )
-
-
-class DuplicateIdRule(A11yRule):
-    def finalize(self, ctx: ParseContext) -> None:
-        for id_val, line in sorted(ctx.aria.duplicate_ids, key=lambda item: item[1]):
-            ctx.add_violation(
-                id="duplicate-id",
-                severity="serious",
-                line=line,
-                message=f"Duplicate id attribute value '{id_val}' detected",
-                fix="Ensure all id attributes on the page are unique",
-                wcag="4.1.1 Parsing",
-            )

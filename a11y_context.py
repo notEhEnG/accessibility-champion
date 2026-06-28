@@ -88,10 +88,16 @@ class FormState:
 
 
 @dataclass
+class AudioEntry:
+    line: int
+    offset: int
+
+
+@dataclass
 class MediaState:
     video_depth: int = 0
     current_video: dict | None = None
-    audio_lines: list[int] = field(default_factory=list)
+    audio_entries: list[AudioEntry] = field(default_factory=list)
 
 
 @dataclass
@@ -125,48 +131,6 @@ class AriaState:
     described_by_checks: list[dict] = field(default_factory=list)
     labelled_by_checks: list[dict] = field(default_factory=list)
     aria_invalid_checks: list[dict] = field(default_factory=list)
-
-
-# Flat aliases used by a11y_rules.py until Phase 1.5 package migration completes.
-_PARSE_CONTEXT_COMPAT: dict[str, tuple[str, str]] = {
-    "is_full_page": ("page", "is_full_page"),
-    "has_main": ("page", "has_main"),
-    "has_header": ("page", "has_header"),
-    "has_nav": ("page", "has_nav"),
-    "has_footer": ("page", "has_footer"),
-    "h1_count": ("page", "h1_count"),
-    "headings_seen": ("page", "headings_seen"),
-    "head_depth": ("page", "head_depth"),
-    "document_title_depth": ("page", "document_title_depth"),
-    "document_title": ("page", "document_title"),
-    "has_skip_link": ("page", "has_skip_link"),
-    "label_fors": ("forms", "label_fors"),
-    "inputs_needing_labels": ("forms", "inputs_needing_labels"),
-    "placeholder_controls": ("forms", "placeholder_controls"),
-    "fieldset_stack": ("forms", "fieldset_stack"),
-    "radio_checkbox_groups": ("forms", "radio_checkbox_groups"),
-    "form_depth": ("forms", "form_depth"),
-    "video_depth": ("media", "video_depth"),
-    "current_video": ("media", "current_video"),
-    "audio_lines": ("media", "audio_lines"),
-    "link_depth": ("links", "link_depth"),
-    "current_link": ("links", "current_link"),
-    "button_depth": ("buttons", "button_depth"),
-    "current_button": ("buttons", "current_button"),
-    "in_svg_depth": ("buttons", "in_svg_depth"),
-    "in_title_depth": ("buttons", "in_title_depth"),
-    "current_title_text": ("buttons", "current_title_text"),
-    "table_depth": ("tables", "table_depth"),
-    "current_table_has_th": ("tables", "current_table_has_th"),
-    "current_table_has_caption": ("tables", "current_table_has_caption"),
-    "current_table_is_presentation": ("tables", "current_table_is_presentation"),
-    "current_table_line": ("tables", "current_table_line"),
-    "ids_seen": ("aria", "ids_seen"),
-    "duplicate_ids": ("aria", "duplicate_ids"),
-    "described_by_checks": ("aria", "described_by_checks"),
-    "labelled_by_checks": ("aria", "labelled_by_checks"),
-    "aria_invalid_checks": ("aria", "aria_invalid_checks"),
-}
 
 
 @dataclass
@@ -206,18 +170,3 @@ class ParseContext:
     def page_line(self, fallback: int = 1) -> int:
         """Best line number for page-level violations."""
         return self.page.html_line or fallback
-
-    def __getattr__(self, name: str):
-        mapping = _PARSE_CONTEXT_COMPAT.get(name)
-        if mapping is not None:
-            bucket, field = mapping
-            return getattr(getattr(self, bucket), field)
-        raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
-
-    def __setattr__(self, name: str, value) -> None:
-        mapping = _PARSE_CONTEXT_COMPAT.get(name)
-        if mapping is not None:
-            bucket, field = mapping
-            setattr(getattr(self, bucket), field, value)
-            return
-        super().__setattr__(name, value)

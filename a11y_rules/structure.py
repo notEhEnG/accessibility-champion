@@ -97,21 +97,6 @@ class HeadingRule(A11yRule):
         )
 
 
-class SkipLinkRule(A11yRule):
-    def finalize(self, ctx: ParseContext) -> None:
-        if ctx.fragment_mode or not ctx.page.is_full_page or not ctx.page.has_nav:
-            return
-        if not ctx.page.has_skip_link:
-            ctx.add_violation(
-                id="skip-link",
-                severity="moderate",
-                line=ctx.page.nav_line,
-                message='Page with navigation is missing a "skip to main content" link',
-                fix='Add <a href="#main-content">Skip to main content</a> as the first focusable element',
-                wcag="2.4.1 Bypass Blocks",
-            )
-
-
 class TableRule(A11yRule):
     def on_starttag(self, ctx: ParseContext, tag: str, attrs: TagAttrs, line: int) -> None:
         if tag == "table":

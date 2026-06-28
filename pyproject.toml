@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "accessibility-champion"
-version = "0.1.2"
+version = "0.2.0"
 description = "Lightweight static HTML accessibility linter for WCAG 2.2"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -26,10 +26,17 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP :: Site Management",
 ]
 
+[project.optional-dependencies]
+# Phase 3 — CSS engine (see phases/Phase 3/PHASE.md)
+css = ["tinycss2>=1.2.0"]
+# Local development / PyPI publish
+dev = ["build>=1.0.0", "twine>=4.0.0"]
+
 [project.urls]
 Homepage = "https://github.com/notEhEnG/accessibility-champion"
 Repository = "https://github.com/notEhEnG/accessibility-champion"
 Issues = "https://github.com/notEhEnG/accessibility-champion/issues"
+Changelog = "https://github.com/notEhEnG/accessibility-champion/blob/main/phases/README.md"
 
 [project.scripts]
 a11y-lint = "a11y_lint:cli"
@@ -37,7 +44,62 @@ a11y-lint = "a11y_lint:cli"
 [tool.setuptools]
 py-modules = [
     "a11y_lint",
-    "a11y_rules",
     "a11y_context",
     "a11y_focus"
 ]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["a11y_rules*"]
+
+# Phase roadmap — specs: phases/Phase N/ARCHITECTURE.md (local planning, gitignored)
+[tool.accessibility-champion]
+current-phase = "2"
+planning-root = "phases"
+architecture-doc = "phases/Phase {phase}/ARCHITECTURE.md"
+
+[tool.accessibility-champion.phases."1"]
+version = "0.1.2"
+status = "complete"
+modules = ["a11y_lint", "a11y_context", "a11y_rules", "a11y_focus"]
+
+[tool.accessibility-champion.phases."1.5"]
+version = "0.2.0"
+status = "complete"
+modules = ["a11y_rules/"]
+deliverables = ["CONTRIBUTING.md", "scripts/check_max_file_size.py"]
+
+[tool.accessibility-champion.phases."2"]
+version = "0.3.0"
+status = "planned"
+modules = ["a11y_extract.py"]
+deliverables = ["*.extract-map.json sidecar"]
+
+[tool.accessibility-champion.phases."3"]
+version = "0.4.0"
+status = "planned"
+modules = ["a11y_css.py"]
+optional-deps = ["css"]
+
+[tool.accessibility-champion.phases."4"]
+version = "0.5.0"
+status = "planned"
+modules = ["a11y_axe.py"]
+requires-node = true
+
+[tool.accessibility-champion.phases."5"]
+version = "0.6.0"
+status = "planned"
+modules = ["a11y_report.py", "a11y_config.py", "a11y_fix.py", "scripts/a11y-audit.sh"]
+
+[tool.accessibility-champion.phases."6"]
+version = "1.0.0"
+status = "planned"
+modules = [".github/action.yml", "SARIF"]
+deliverables = ["pre-commit", "docker", "vscode problem matcher"]
+
+[tool.accessibility-champion.phases."7"]
+version = "1.1.0"
+status = "research"
+modules = ["a11y_plugins.py", "a11y_site.py", "a11y_fetch.py"]
+optional-deps = ["research"]
