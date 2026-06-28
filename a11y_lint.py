@@ -4,6 +4,8 @@ accessibility-champion static linter
 Checks a single HTML file for common WCAG 2.2 AA issues.
 """
 
+from __future__ import annotations
+
 import sys
 import json
 import re
