@@ -50,7 +50,7 @@ class TestA11yLint(unittest.TestCase):
         full_source = f"<html lang='en'><main>{source}</main></html>"
         violations = check_html(full_source)
         violation_ids = [v["id"] for v in violations]
-        self.assertNotIn("label-content-name-mismatch", violation_ids)
+        self.assertNotIn("input-unlabelled", violation_ids)
         self.assertNotIn("input-missing-label", violation_ids)
 
     def test_table_presentation(self):
@@ -169,16 +169,10 @@ class TestA11yLint(unittest.TestCase):
         self.assertNotIn("missing-nav-landmark", violation_ids_present)
         self.assertNotIn("missing-footer-landmark", violation_ids_present)
 
-    def test_check_focus_visible_regex(self):
+    def test_check_focus_visible_css_blocks(self):
         source = """
         <style>
           .bad { outline: none; }
-          
-          /* Padding to exceed the 200-character context window for the heuristic scan */
-          /* ------------------------------------------------------------------------------------------------- */
-          /* ------------------------------------------------------------------------------------------------- */
-          /* ------------------------------------------------------------------------------------------------- */
-          
           .good { outline: 0; }
           .good:focus-visible { outline: 2px solid blue; }
         </style>
@@ -186,6 +180,36 @@ class TestA11yLint(unittest.TestCase):
         violations = check_focus_visible(source)
         self.assertEqual(len(violations), 1)
         self.assertEqual(violations[0]["id"], "focus-visible")
+
+    def test_fragment_mode_skips_landmarks(self):
+        source = '<div><input type="text" id="x"><label for="x">Name</label></div>'
+        violations = check_html(source, fragment=True)
+        violation_ids = [v["id"] for v in violations]
+        self.assertNotIn("missing-main", violation_ids)
+        self.assertNotIn("missing-header-landmark", violation_ids)
+
+    def test_form_group_single_violation(self):
+        source = """<html lang="en"><main>
+            <input type="radio" name="c" value="1">
+            <input type="radio" name="c" value="2">
+            <input type="radio" name="c" value="3">
+        </main></html>"""
+        violations = [v for v in check_html(source) if v["id"] == "form-group-fieldset"]
+        self.assertEqual(len(violations), 1)
+        self.assertIn("3 grouped radio", violations[0]["message"])
+
+    def test_single_h1_enforcement(self):
+        source = """<html lang="en"><body>
+            <header><h1>One</h1><h1>Two</h1></header>
+            <nav></nav><main></main><footer></footer>
+        </body></html>"""
+        violations = check_html(source)
+        self.assertIn("heading-single-h1", [v["id"] for v in violations])
+
+    def test_select_missing_label(self):
+        source = """<html lang="en"><main><select id="country"></select></main></html>"""
+        violations = check_html(source)
+        self.assertIn("input-missing-label", [v["id"] for v in violations])
 
     def test_cli_clean_file(self):
         passing_path = self.demo_dir / "passing_page.html"

@@ -16,6 +16,15 @@ To output the results in JSON format (useful for CI/CD pipelines and automated t
 python3 a11y_lint.py path/to/your/file.html --json
 ```
 
+To lint an HTML fragment (skips full-page landmark and single-`<h1>` checks):
+
+```bash
+python3 a11y_lint.py path/to/fragment.html --fragment
+```
+
+Full-page landmark checks run automatically when `<html>` or `<body>` tags are present.
+Use `--full-page` to force full-page mode on partial markup.
+
 ## Output Format
 
 ### Text Report
@@ -75,13 +84,14 @@ The linter currently performs the following checks:
   - Links (`<a>`) using generic text (e.g., "click here", "read more") or generic prefix phrases (e.g., "read more about...")
   - Focus visibility suppression (`outline: none` without a `:focus-visible` fallback)
 - **Pillar 3: Understandable**
-  - Form `<input>` elements missing associated labels or `id` attributes
+  - Form controls (`<input>`, `<select>`, `<textarea>`) missing associated labels or `id` attributes
   - Form inputs requesting personal data missing `autocomplete` attributes
 - **Pillar 4: Robust & Semantic Structure**
   - Duplicate `id` attribute detection
   - Grouped radio/checkbox inputs (inputs sharing a `name`) must be wrapped in a `<fieldset>` with a `<legend>`
   - Inputs with `aria-describedby` must point to target IDs that exist in the document
   - Skipped heading hierarchy levels (e.g., jumping from `<h1>` to `<h3>`)
+  - Exactly one `<h1>` per full page
   - `<iframe>` elements missing `title` attributes
   - Tables missing `<th>` header cells or `<caption>` elements
   - Presence of `<main>`, `<header>`, `<nav>`, and `<footer>` landmark regions on full HTML pages
@@ -105,7 +115,10 @@ The `demo/` directory contains two HTML files used to demonstrate and test the l
 
 ## Project Layout
 
-- `a11y_lint.py` — The core HTML parser and accessibility linter script.
+- `a11y_lint.py` — CLI entry point and thin HTML parser dispatcher.
+- `a11y_context.py` — Shared parse context and attribute helpers.
+- `a11y_rules.py` — Individual accessibility rule implementations.
+- `a11y_focus.py` — CSS focus-outline checks for `<style>` blocks and inline styles.
 - `demo/broken_page.html` — Fixture demonstrating failing checks.
 - `demo/passing_page.html` — Fixture demonstrating passing checks.
 - `test_a11y_lint.py` — The automated test suite for the linter.
