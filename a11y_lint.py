@@ -144,11 +144,11 @@ def main():
 
 def cli():
     import sys
-    if len(sys.argv) > 1:
-        # Call your existing main logic
-        main(sys.argv[1])
-    else:
-        print("Usage: a11y-lint <path-to-html-file>")
 
-if __name__ == "__main__":
-    cli()
+    if len(sys.argv) < 2:
+        print("Usage: a11y-lint <html-file>")
+        print("Example: a11y-lint demo/broken_page.html")
+        sys.exit(1)
+
+    # Just call the original main() — it reads the filename from sys.argv itself
+    main()

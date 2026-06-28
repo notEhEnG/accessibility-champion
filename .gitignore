@@ -5,3 +5,7 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+
+# Local planning artifacts and archives (not for publication)
+ROADMAP.md
+accessibility-champion.zip
