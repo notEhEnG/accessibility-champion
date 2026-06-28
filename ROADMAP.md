@@ -1,325 +1,370 @@
-# Accessibility Champion — Full Coverage Roadmap
+# Accessibility Champion — Roadmap
 
-This document describes how to evolve Accessibility Champion from a **fast static HTML linter** (22 rules today) toward **credible automated WCAG 2.2 AA coverage**, and recommends which phase to ship for an **Open Source Program submission** (e.g., Codex Open Source Program).
+How Accessibility Champion evolves from a **fast static HTML linter** (32 rules today) toward a **layered WCAG 2.2 AA audit platform** — linter + axe + agent skill — with honest scope at each layer.
 
 ---
 
 ## Executive summary
 
-| Layer | Role | Coverage contribution |
-|-------|------|------------------------|
-| **Static linter** (`a11y_lint.py`, `a11y_rules.py`, `a11y_focus.py`) | Parse HTML source; no browser | ~30–50% of common issues |
-| **Hybrid CSS analysis** (planned Phase 3) | Parse stylesheets; computed heuristics | ~60–70% on static pages |
-| **Rendered audit** (planned Phase 4, axe-core) | Browser/DOM; contrast, ARIA validity, focus | ~80%+ automated; still not 100% |
-| **Manual review** (SKILL.md workflow) | Intent, meaningful alt, complex widgets | Required for true compliance |
+| Layer | Role | Coverage | Status |
+|-------|------|----------|--------|
+| **Static linter** | `a11y_lint.py` + rule registry | ~35–50% of common HTML issues | **32 rules, 30 tests** |
+| **Code quality / architecture** | Maintainability before growth | Prevents regression to monolith | Planned (Phase 1.5) |
+| **Structure & frameworks** | More static rules + template extractors | ~50–60% on real projects | Planned (Phase 2) |
+| **CSS engine** | Contrast, touch targets, shared parser | ~60–70% on static pages | Planned (Phase 3) |
+| **Rendered audit** | axe-core wrapper | ~80%+ automated | Planned (Phase 4) |
+| **Agent skill** | Manual review, auto-fix, test generation | Intent + non-HTML frameworks | Ongoing (Phase 5) |
 
-**“Full” does not mean one HTML pass.** It means a **layered pipeline**: static rules for speed → axe for depth → human review for intent.
+**“Full” ≠ one HTML pass.** Target pipeline:
+
+```
+HTML/JSX/Vue → [extract] → a11y_lint.py → [optional --axe] → agent review → report
+```
 
 ---
 
-## Current state (baseline)
+## Current state (as of Phase 1 complete)
 
-### What the tool does today
+### Linter capabilities
 
-1. Reads UTF-8 HTML files (CLI or `check_html()` API).
-2. Dispatches parse events to 14 rule classes in `a11y_rules.py`.
-3. Scans `<style>` blocks and inline `style=""` for focus-outline suppression (`a11y_focus.py`).
-4. Scores violations and outputs text or `--json`.
-5. Supports `--fragment` / `--full-page` modes for partial markup vs whole documents.
+- 32 rule IDs across 21 rule classes in `a11y_rules.py` (775 lines)
+- Thin dispatcher in `a11y_lint.py` (145 lines)
+- CSS focus-outline parser in `a11y_focus.py`
+- Shared `ParseContext` in `a11y_context.py`
+- CLI: `--json`, `--fragment`, `--full-page`
+- Demo fixtures + 30 unit tests
+- `SKILL.md` tagged with `[linter]` / `[agent]` / `[axe]` / `[manual]`
 
-### What it checks (22 rule IDs)
+### Remaining gaps (linter vs SKILL.md)
 
-See [README.md](./README.md#current-checks) for the full table. Highlights:
-
-- Perceivable: `lang`, `alt`, generic alt, autoplay
-- Operable: button/link names, CSS focus outline
-- Understandable: labels, autocomplete
-- Robust: duplicate IDs, fieldset/legend, `aria-describedby`, headings, landmarks, tables, iframes
-
-### What it does **not** check (gap vs SKILL.md)
-
-`SKILL.md` describes a six-pillar agent audit. The **linter code** does not yet implement:
-
-- Color contrast
-- Keyboard navigation / focus traps
-- Skip links
-- Video captions / audio transcripts
-- Placeholder-as-label
-- Error field association (`aria-invalid` + `aria-describedby`)
-- ARIA role validity and required children
-- JSX / Vue / Angular template support
-- Touch target size
-- Cross-page consistency
+| Area | Status |
+|------|--------|
+| Placeholder-as-label, skip links, captions, document title | **Done** (Phase 1) |
+| Color contrast | Not implemented |
+| Keyboard navigation / focus traps | Agent / axe only |
+| ARIA role validity & required children | Agent / axe only |
+| JSX / Vue / Angular direct linting | Not implemented |
+| Touch target size | Not implemented |
+| Landmark nesting, list semantics | Not implemented |
+| Link `href` quality, empty headings | Not implemented |
+| Required field visible indicator | Not implemented |
+| Multi-file / site-wide consistency | Not implemented |
 
 ---
 
 ## Target architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  CLI / API (a11y_lint.py)                                   │
-└───────────────────────────┬─────────────────────────────────┘
-                            │
-         ┌──────────────────┼──────────────────┐
-         ▼                  ▼                  ▼
-┌─────────────────┐ ┌──────────────┐ ┌─────────────────────┐
-│ HTMLParser      │ │ CSS analyzer │ │ axe-core wrapper    │
-│ rule registry   │ │ (Phase 3)    │ │ (Phase 4, optional) │
-│ (a11y_rules.py) │ │ (a11y_focus+)│ │ (a11y_axe.py)       │
-└────────┬────────┘ └──────┬───────┘ └──────────┬──────────┘
-         │                 │                     │
-         └─────────────────┼─────────────────────┘
-                           ▼
-              Unified violation schema
-              { id, severity, line, message, fix, wcag, source }
-                           ▼
-                   Score + text/JSON report
+┌──────────────────────────────────────────────────────────────────┐
+│  CLI / API (a11y_lint.py)                                        │
+│  flags: --json --fragment --full-page --axe --sarif --severity   │
+└────────────────────────────┬─────────────────────────────────────┘
+                             │
+      ┌──────────────────────┼──────────────────────┐
+      ▼                      ▼                      ▼
+┌─────────────┐    ┌─────────────────┐    ┌──────────────────┐
+│ a11y_extract│    │ HTMLParser      │    │ a11y_axe.py      │
+│ .py         │    │ rule registry   │    │ (axe-core)       │
+│ Phase 2     │    │ a11y_rules/*    │    │ Phase 4          │
+└──────┬──────┘    │ a11y_focus.py   │    └────────┬─────────┘
+       │           │ a11y_css.py     │             │
+       └───────────┤ Phase 1.5/3     ├─────────────┘
+                   └────────┬────────┘
+                            ▼
+              Unified Violation { id, severity, line, message,
+                                  fix, wcag, source, file }
+                            ▼
+                   Score + text / JSON / SARIF
+                            ▼
+              SKILL.md agent layer (manual + auto-fix + tests)
 ```
 
 ### Design principles
 
-1. **One rule class per check** — extend `A11yRule`; register in `all_rules()`.
-2. **One violation schema** — static and axe findings share the same JSON shape; add `source: "static" | "axe"`.
-3. **Honest scope** — README and SKILL.md must distinguish static vs rendered vs manual checks.
-4. **Tests per rule** — every new rule: failing markup + passing markup in `test_a11y_lint.py`.
+1. **One rule class per check** — register in `all_rules()`.
+2. **One violation schema** — static, axe, and future sources share the same JSON shape.
+3. **Honest scope** — README / SKILL / ROADMAP stay synchronized.
+4. **Tests per rule** — failing + passing markup minimum.
+5. **Split before 1k lines** — `a11y_rules.py` must not grow unbounded.
 
 ---
 
-## Phase 1 — High-ROI static rules (recommended for OSS submission)
+## Phase 1 — High-ROI static rules ✅ COMPLETE
 
-**Effort:** ~1–2 weeks  
-**Dependencies:** Python stdlib only  
-**Fits:** Existing `A11yRule` registry; no new runtime.
+**Delivered:** 10 new rules (22 → 32), 30 tests, demo + docs updated.
 
-### Goals
+| Rule ID | Check |
+|---------|-------|
+| `placeholder-as-label` | Placeholder without real label |
+| `document-title` | Missing `<title>` |
+| `video-captions` | `<video>` without captions track |
+| `audio-transcript` | `<audio>` without nearby transcript (heuristic) |
+| `skip-link` | `<nav>` without skip-to-main link |
+| `aria-labelledby-target` | Broken `aria-labelledby` reference |
+| `aria-invalid-no-desc` | `aria-invalid` without error association |
+| `tabindex-positive` | `tabindex > 0` |
+| `button-type-missing` | `<button>` in `<form>` without `type` |
+| `target-blank-no-warning` | `target="_blank"` without new-window hint |
 
-Close the largest gaps between `SKILL.md` promises and linter behavior using pure static analysis.
+---
 
-### Planned rules
+## Phase 1.5 — Architecture & code quality (do before Phase 2)
 
-| Rule ID (proposed) | Check | Severity | WCAG area |
-|--------------------|-------|----------|-----------|
-| `placeholder-as-label` | `placeholder` on input without `<label>`, `aria-label`, or `aria-labelledby` | critical | 3.3.2 |
-| `video-captions` | `<video>` without `<track kind="captions">` | serious | 1.2.2 |
-| `audio-transcript` | `<audio>` without adjacent transcript link/text (heuristic) | serious | 1.2.1 |
-| `document-title` | Full page missing non-empty `<title>` | serious | 2.4.2 |
-| `skip-link` | Full page with `<nav>` but no skip link to `<main>` / `#main-content` | moderate | 2.4.1 |
-| `aria-labelledby-target` | `aria-labelledby` references missing `id` | serious | 4.1.2 |
-| `tabindex-positive` | Any `tabindex` > 0 | moderate | 2.4.3 |
-| `aria-invalid-no-desc` | `aria-invalid="true"` without `aria-describedby` pointing to existing id | serious | 3.3.1 |
-| `button-type-missing` | `<button>` inside `<form>` without explicit `type` | moderate | best practice |
-| `target-blank-no-warning` | `target="_blank"` without accessible new-window hint (heuristic) | minor | 3.2.5 |
+**Effort:** ~1 week  
+**Why now:** `a11y_rules.py` is 775 lines; `ParseContext` has 25+ fields; `LinkNameRule` owns skip-link and target-blank logic. Adding Phase 2 rules without this refactor will recreate the pre-refactor monolith.
+
+### Code-judo refactors (from code review)
+
+| Item | Problem | Remedy |
+|------|---------|--------|
+| **Split `a11y_rules.py`** | Single 775-line module, 21 classes | `a11y_rules/forms.py`, `media.py`, `structure.py`, `aria.py`; `all_rules()` re-exports |
+| **Nest `ParseContext`** | God-object state bag | `PageState`, `FormState`, `MediaState`, `LinkState` sub-dataclasses on `ParseContext` |
+| **Isolate link policies** | `LinkNameRule` handles generic text + skip link + `target="_blank"` | `SkipLinkRule` sets flag on starttag; `TargetBlankRule` on endtag; `LinkNameRule` = generic text only |
+| **Audio transcript offsets** | `AudioTranscriptRule` re-scans full source with regex per `<audio>` | Store byte `offset` in `MediaRule`; finalize reads 500-char window from offset |
+| **Page-level line numbers** | `document-title`, `skip-link`, landmarks report `line: 1` | Record line of triggering element (`<html>`, first `<nav>`, etc.) |
+| **`AriaReferenceRule` whitelist** | Only checks `div`/`span` + form controls | Validate `aria-*` reference attrs on **any** element with those attributes |
+| **Violation typed model** | Ad-hoc `dict` with string keys | `Violation` dataclass or `TypedDict`; single factory in `a11y_context.py` |
 
 ### Deliverables
 
-- [x] 10 new rule classes in `a11y_rules.py`
-- [x] 20 new unit tests (2 per rule minimum)
-- [x] Updated `demo/broken_page.html` + `demo/expected_output.txt`
-- [x] README rule table updated
-- [x] SKILL.md checkboxes aligned with implemented rules
-
-### Success metrics
-
-- Rule count: 22 → **32** (implemented)
-- All tests pass: `python3 -m unittest test_a11y_lint -v` (30 tests)
-- `demo/broken_page.html` demonstrates new violations
-- Zero new non-stdlib dependencies
+- [ ] Split `a11y_rules/` package (no file > 400 lines)
+- [ ] Nested context state objects
+- [ ] Link policy rules extracted from `LinkNameRule`
+- [ ] Audio offset-based transcript check
+- [ ] `Violation` typed schema used everywhere
+- [ ] All 30+ tests still pass
 
 ---
 
-## Phase 2 — Structure, forms depth, framework hooks
+## Phase 2 — Structure, forms, frameworks
 
 **Effort:** ~2–3 weeks  
-**Dependencies:** Optional light parsers for template extraction
+**Dependencies:** Phase 1.5 complete
 
-### Goals
+### New linter rules (proposed)
 
-Deeper semantic and form checks; path toward JSX/Vue/HTML in the same pipeline.
+| Rule ID | Check | Severity |
+|---------|-------|----------|
+| `required-indicator` | `required` / `aria-required` without visible or sr-only indicator | moderate |
+| `select-empty-label` | `<select>` first `<option>` is empty and acts as sole label | serious |
+| `landmark-nesting` | `<main>` inside `<main>`, or duplicate `role="main"` | serious |
+| `empty-heading` | `<h1>`–`<h6>` with no text content | moderate |
+| `empty-link` | `<a>` with no `href` or `href="#"` as only destination | moderate |
+| `filename-link-text` | Link text matches filename pattern (`report.pdf`) | minor |
+| `aria-hidden-focusable` | `aria-hidden="true"` ancestor contains focusable descendant | serious |
+| `redundant-role` | `role="button"` on `<button>`, etc. | minor |
+| `list-structure` | Nav block with 3+ consecutive `<a>` in bare `<div>`s (heuristic) | moderate |
+| `decorative-img-role` | `alt=""` without `role="presentation"` (advisory) | minor |
+| `lang-subtag` | Inline `lang` on non-default-language spans missing on i18n content | minor |
 
-### Planned work
+### Framework / multi-format support
 
-| Area | Features |
-|------|----------|
-| **Forms** | Required fields without visible/sr-only indicator; empty first `<option>` as only label |
-| **Landmarks** | Nesting violations (`<main>` inside `<main>`); duplicate `role="main"` |
-| **Links** | Empty `href`, placeholder `#` links, filename-like link text |
-| **Headings** | Empty heading elements |
-| **ARIA** | `aria-hidden="true"` on ancestor of focusable child; redundant `role` on natives |
-| **Frameworks** | `extract_html.py`: pull template blocks from `.tsx`, `.vue`, `.component.html` before lint |
+| Feature | Description |
+|---------|-------------|
+| **`a11y_extract.py`** | Extract HTML from `.tsx` (jsx template), `.vue` (`<template>`), `.svelte`, Angular `.component.html` |
+| **`a11y_lint.py --extract`** | Auto-detect format, lint extracted markup, map line numbers back to source |
+| **Batch mode** | `a11y_lint.py 'src/**/*.html'` or `--glob` for CI directories |
 
 ### Deliverables
 
-- [ ] `a11y_extract.py` (or `scripts/extract_html.py`) for template extraction
-- [ ] Landmark nesting rule
-- [ ] Form required-field + error-association rules
-- [ ] Docs: “Linting React/Vue templates” section in README
+- [ ] `a11y_extract.py` with tests per framework
+- [ ] 8–10 new rules from table above
+- [ ] README: “Linting React/Vue templates”
+- [ ] SKILL.md: Step 1.5 calls extractor for non-`.html` files
 
 ---
 
 ## Phase 3 — CSS engine (contrast, touch targets)
 
 **Effort:** ~3–4 weeks  
-**Dependencies:** `tinycss2` or equivalent (add to `requirements.txt`)
+**Dependencies:** `tinycss2` or `css-parser` in `requirements.txt`
 
-### Goals
+### New module: `a11y_css.py`
 
-Replace regex CSS parsing with a real stylesheet parser; enable contrast and size heuristics.
+| Feature | Rule ID (proposed) | Approach |
+|---------|-------------------|----------|
+| **Color contrast** | `color-contrast` | Resolve `color` / `background-color` pairs on text nodes |
+| **Touch targets** | `touch-target-size` | `width`/`height`/`padding`/`min-height` on buttons/links; flag &lt; 44×44px |
+| **Pointer events** | `pointer-events-none-interactive` | `pointer-events: none` on interactive elements |
+| **Font size px** | `font-size-px-only` | Heuristic: all font sizes in `px` without `rem` fallback | 
+| **Shared CSS parser** | — | Migrate `a11y_focus.py` to use `a11y_css.py` rule walker |
+| **External stylesheets** | — | `--base-url` to fetch linked `.css` in CI |
 
-### Planned work
-
-| Feature | Approach |
-|---------|----------|
-| **Color contrast** | Resolve `color` / `background-color` on text nodes for inline + `<style>` rules |
-| **Touch targets** | Parse `width`/`height`/`padding`/`min-height` on interactive elements; flag &lt; 44×44px when computable |
-| **Focus CSS** | Migrate `a11y_focus.py` from regex to shared CSS rule parser |
-| **External CSS** | Optional `--base-url` to fetch linked stylesheets in CI |
-
-### Limitations (document clearly)
+### Limitations (document in README + SKILL)
 
 - No inherited computed styles without a browser
-- Gradients, background images, and CSS variables will be partial
-- Results are **heuristic**, not compliance guarantees
+- CSS variables, gradients, and background images are partial
+- Results are **heuristic** — pair with axe for compliance claims
 
 ---
 
 ## Phase 4 — Rendered audit (axe-core integration)
 
 **Effort:** ~2–3 weeks  
-**Dependencies:** Node.js, `@axe-core/cli` or Playwright + `axe-core`
+**Dependencies:** Node.js, `@axe-core/cli` or Playwright
 
-### Goals
-
-Honest “full automated pass” by delegating browser-only checks to the industry-standard engine.
-
-### Planned CLI
+### CLI
 
 ```bash
-# Fast static pass (default, no extra deps)
-python3 a11y_lint.py page.html
-
-# Full automated pass (requires Node + axe)
-python3 a11y_lint.py page.html --axe
-
-# CI: merge both into one JSON report
-python3 a11y_lint.py page.html --axe --json
+python3 a11y_lint.py page.html              # static only (default)
+python3 a11y_lint.py page.html --axe        # static + rendered
+python3 a11y_lint.py page.html --axe --json # merged JSON report
+python3 a11y_lint.py page.html --axe-only   # skip static (debug)
 ```
 
 ### New module: `a11y_axe.py`
 
-- Subprocess wrapper around axe-core
-- Map axe `impact` → `critical` / `serious` / `moderate` / `minor`
-- Normalize to shared violation schema with `source: "axe"`
-- Merge and deduplicate with static findings
+- Subprocess wrapper; map axe `impact` → severity
+- Normalize to unified `Violation` schema with `source: "axe"`
+- Deduplicate overlapping static + axe findings
+- Optional: render HTML with `playwright` for SPAs before axe scan
 
-### What axe adds that static cannot
+### What axe adds
 
 - Computed color contrast
-- Valid ARIA roles and required children
+- ARIA role validity and required children
 - Focusable element visibility
 - Duplicate accessible names
-- Many WCAG 2.x rules that need rendered DOM
+- ~57% of WCAG rules automatically
 
 ---
 
-## What not to implement as static rules
+## Phase 5 — Skill & agent workflow enhancements
 
-These require a browser, runtime JS, or human judgment. Document as **manual review** in SKILL.md instead of fake static checks:
+**Effort:** ongoing  
+**Goal:** Make `SKILL.md` a first-class orchestration layer, not just a checklist.
 
-| Check | Why static fails |
-|-------|------------------|
-| Keyboard traps | Needs focus events and JS behavior |
-| Modal focus management | Dynamic DOM |
-| Custom widget semantics | Behavior, not markup |
-| Meaningful alt text | Context and intent |
-| Reading order vs visual layout | CSS layout computation |
-| Cross-page nav consistency | Multi-file site analysis |
-| Seizure / flash rate | Animation timing in runtime |
+### Agent workflow improvements
 
----
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| **Unified audit command** | Agent script: run linter → optional axe → format merged SKILL report | high |
+| **AUTO_FIX v2** | Map each linter `id` to a deterministic fix template (AST-safe where possible) | high |
+| **Severity config** | `.a11y.json` or `pyproject.toml` to disable rules / change severity per project | medium |
+| **Baseline mode** | `--baseline violations.json` — only report new violations (CI regression) | medium |
+| **Fix confidence tags** | Violations include `fix_confidence: auto \| assisted \| manual` in JSON | medium |
+| **Component-scoped audit** | SKILL instructs agent to audit single component vs full page with correct fragment mode | medium |
+| **Positive findings export** | Report which rules passed (not just violations) for stakeholder comms | low |
+| **WCAG criterion index** | Group violations by WCAG SC number in output | low |
 
-## Recommendation for Codex Open Source Program submission
+### GENERATE_TESTS enhancements
 
-### Primary recommendation: **Ship Phase 1**
+| Feature | Description |
+|---------|-------------|
+| **Linter test codegen** | Generate `unittest` snippets from `demo/broken_page.html` violations |
+| **Playwright + linter CI** | Template GitHub Action: lint → axe → fail on critical |
+| **Regression fixtures** | User-submitted HTML snippets become permanent test cases |
 
-Phase 1 is the best submission scope for these reasons:
-
-1. **Complete, reviewable increment** — Judges can clone, run tests, and see new rules immediately without installing Node or a browser.
-2. **Demonstrates architecture** — The rule-registry design proves the project is extensible, not a one-off script.
-3. **Closes the credibility gap** — Today `SKILL.md` overpromises relative to code. Phase 1 aligns docs with implementation.
-4. **High accessibility impact per line of code** — Placeholder-as-label, captions, skip links, and error association are common real-world failures.
-5. **Low risk** — Stdlib-only; no flaky CI from headless Chrome; easy to maintain post-submission.
-6. **Clear narrative** — “We expanded from 22 to 30+ WCAG-aligned static checks with full test coverage.”
-
-### Submission package checklist (Phase 1)
+### Documentation
 
 | Item | Status |
 |------|--------|
-| Working CLI + JSON output | Done |
-| Rule-registry architecture | Done |
-| 20+ unit tests | Done (extend to 36+ with Phase 1) |
-| README with rule tables | Done (update after Phase 1) |
-| Demo fixtures (broken + passing) | Done (extend broken_page) |
-| ROADMAP.md (this file) | Done |
-| `.gitignore`, no committed bytecode | Done |
-| SKILL.md aligned with linter | Phase 1 deliverable |
-| CONTRIBUTING.md (optional) | Recommended |
-
-### Optional stretch goal (if time permits): **Phase 4 spike**
-
-If the program rewards ambition and you have ~1 extra week:
-
-- Add a minimal `a11y_axe.py` + `--axe` flag
-- Document Node as optional dependency
-- Show one merged JSON report (static + axe)
-
-**Do not** make Phase 4 the only submission story — external deps and setup friction hurt reproducibility for reviewers.
-
-### Defer for post-submission
-
-- **Phase 3** (CSS engine) — high effort, heuristic accuracy debates; better as v2.0 after community feedback
-- **Phase 2 framework extractors** — valuable but broader scope; good follow-up PR series
+| `CONTRIBUTING.md` | Not started — rule addition guide, test requirements |
+| `references/rule-catalog.md` | Not started — one page per rule ID with examples |
+| SKILL ↔ README auto-sync check | Not started — CI script verifying rule IDs match |
 
 ---
 
-## Suggested timeline
+## Phase 6 — CI, packaging & distribution
 
-```
-Week 1–2   Phase 1 rules + tests + demo updates     ← SUBMIT HERE
-Week 3     README/SKILL.md sync + submission polish
-Week 4+    Phase 2 (framework extractors) OR Phase 4 spike (--axe)
-Month 2+   Phase 3 CSS engine based on user feedback
-```
+**Effort:** ~1–2 weeks  
+**Goal:** Drop into any pipeline without friction.
+
+| Feature | Description |
+|---------|-------------|
+| **`pip install accessibility-champion`** | `pyproject.toml`, entry point `a11y-lint` |
+| **SARIF output** | `--sarif` for GitHub Code Scanning / GitLab SAST |
+| **GitHub Action** | `uses: org/accessibility-champion@v1` with `files:` input |
+| **pre-commit hook** | `.pre-commit-hooks.yaml` lint staged `.html` files |
+| **GitLab / Jenkins examples** | Docs in README |
+| **Docker image** | Optional image with Python + Node for `--axe` |
+| **VS Code problem matcher** | Parse linter output into IDE diagnostics |
 
 ---
 
-## Submission narrative (template)
+## Phase 7 — Advanced / research (defer until Phases 1–5 stable)
 
-Use this framing in your Open Source Program application:
+| Feature | Notes |
+|---------|-------|
+| **Multi-file site audit** | Cross-page nav consistency, shared header/footer templates |
+| **SCSS/LESS extraction** | Compile to CSS before contrast analysis |
+| **SVG a11y linter** | `<title>`, `aria-labelledby` inside inline SVG |
+| **PDF/HTML export audit** | Accessibility of generated reports |
+| **ML-assisted alt text review** | Flag likely-bad alts beyond keyword list (optional, privacy-sensitive) |
+| **Live URL fetch** | `a11y_lint.py https://example.com` with SSRF guards |
+| **Rule contribution registry** | Plugin system: third-party `A11yRule` subclasses via entry points |
 
-> **Accessibility Champion** is a lightweight, extensible static HTML linter for WCAG 2.2 AA triage. It uses a rule-registry architecture (14 rule classes, 22 checks, 20 tests) and produces scored JSON reports for CI.
->
-> **This submission delivers Phase 1** of our [coverage roadmap](./ROADMAP.md): 8–10 additional high-impact static checks (form placeholders, media captions, skip links, ARIA reference validation, document title) with full test coverage and updated documentation — closing the gap between our agent skill spec and the linter implementation.
->
-> **Future work** (documented, not required for review): axe-core integration for rendered audits (Phase 4) and CSS contrast analysis (Phase 3).
+---
+
+## What NOT to implement as static rules
+
+Document in SKILL.md as `[manual]` or `[axe]` — do not fake with regex:
+
+| Check | Why |
+|-------|-----|
+| Keyboard traps | Needs focus events + JS |
+| Modal focus management | Dynamic DOM |
+| Custom widget behavior | Intent, not markup |
+| Meaningful alt text in context | Human judgment |
+| Reading order vs visual layout | Computed layout |
+| Cross-page nav consistency | Multi-file analysis |
+| Seizure / flash rate | Runtime animation |
+| Screen reader announcement order | Live AT testing |
+
+---
+
+## Priority matrix (what to do next)
+
+```
+Now        Phase 1.5  Architecture refactor (split rules, nested context)
+Next       Phase 2    Framework extractors + 8–10 structure/form rules
+Then       Phase 4    axe-core `--axe` (higher impact than Phase 3 for "full" claims)
+Parallel   Phase 5    AUTO_FIX v2 + unified agent audit script
+Later      Phase 3    CSS contrast engine
+Later      Phase 6    pip package + SARIF + GitHub Action
+Research   Phase 7    Multi-file, plugins, URL fetch
+```
+
+### Recommended for next sprint
+
+1. **Phase 1.5** — split `a11y_rules.py`, fix link-rule leakage, audio offsets (prevents debt)
+2. **Phase 2 extractors** — unlocks SKILL value for React/Vue users
+3. **Phase 4 spike** — `--axe` flag with merged JSON (biggest coverage jump)
+4. **CONTRIBUTING.md** — lowers contributor barrier
+
+---
+
+## Success metrics by phase
+
+| Phase | Rule count | Tests | Key metric |
+|-------|------------|-------|------------|
+| 1 ✅ | 32 | 30 | SKILL/linter alignment |
+| 1.5 | 32 | 30 | No module > 400 lines; nested context |
+| 2 | 40+ | 50+ | Lint extracted `.tsx` / `.vue` templates |
+| 3 | 45+ | 55+ | Contrast heuristic on demo pages |
+| 4 | 45+ + axe | 60+ | Single `--axe --json` merged report |
+| 5 | — | — | Agent AUTO_FIX covers all `auto` confidence rules |
+| 6 | — | — | Published on PyPI; SARIF in GitHub Action |
 
 ---
 
 ## How to add a rule (contributor reference)
 
-1. Create a class extending `A11yRule` in `a11y_rules.py`.
-2. Implement `on_starttag`, `on_endtag`, `on_data`, and/or `finalize`.
-3. Register the instance in `all_rules()`.
-4. Add failing + passing tests in `test_a11y_lint.py`.
-5. Update `README.md` rule table and, if applicable, `demo/broken_page.html`.
-6. If the rule is full-page only, respect `ctx.fragment_mode` and `ctx.is_full_page`.
+1. Complete Phase 1.5 split — add rule to appropriate `a11y_rules/*.py` module.
+2. Create class extending `A11yRule`.
+3. Implement `on_starttag`, `on_endtag`, `on_data`, and/or `finalize`.
+4. Register in `all_rules()`.
+5. Add failing + passing tests in `test_a11y_lint.py`.
+6. Update `README.md`, `SKILL.md` (`[linter]` tag), and `demo/broken_page.html` if applicable.
+7. Respect `ctx.fragment_mode` and `ctx.is_full_page` for page-level checks.
 
 ---
 
 ## References
 
-- [README.md](./README.md) — current checks and usage
-- [SKILL.md](./SKILL.md) — full six-pillar audit workflow (agent)
+- [README.md](./README.md) — linter usage and rule tables
+- [SKILL.md](./SKILL.md) — agent workflow (`[linter]` / `[agent]` / `[axe]` / `[manual]`)
 - [framework-patterns.md](./framework-patterns.md) — React/Vue/Angular patterns
-- [color-contrast.md](./color-contrast.md) — contrast guidance (future Phase 3)
+- [color-contrast.md](./color-contrast.md) — contrast algorithms (Phase 3)
 - [WCAG 2.2 Quick Reference](https://www.w3.org/WAI/WCAG22/quickref/)
-- [axe-core rules](https://github.com/dequelabs/axe-core/blob/develop/doc/rule-descriptions.md) — target for Phase 4 parity
+- [axe-core rules](https://github.com/dequelabs/axe-core/blob/develop/doc/rule-descriptions.md)

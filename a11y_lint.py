@@ -142,5 +142,13 @@ def main():
     sys.exit(1 if has_errors else 0)
 
 
+def cli():
+    import sys
+    if len(sys.argv) > 1:
+        # Call your existing main logic
+        main(sys.argv[1])
+    else:
+        print("Usage: a11y-lint <path-to-html-file>")
+
 if __name__ == "__main__":
-    main()
+    cli()

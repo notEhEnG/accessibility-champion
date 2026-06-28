@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "accessibility-champion"
+version = "0.1.0"
+description = "Lightweight static HTML accessibility linter for WCAG 2.2"
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+authors = [
+    { name = "Bryan Wong" }
+]
+keywords = ["accessibility", "a11y", "wcag", "linter", "html"]
+
+[project.scripts]
+a11y-lint = "a11y_lint:cli"
+
+[tool.setuptools]
+py-modules = [
+    "a11y_lint",
+    "a11y_rules",
+    "a11y_context",
+    "a11y_focus"
+]
