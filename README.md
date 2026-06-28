@@ -20,7 +20,7 @@ Optional extras:
 
 ```bash
 pip install accessibility-champion[css]   # tinycss2 for CSS heuristics (roadmap)
-pip install accessibility-champion[dev]     # build + twine for local publishing
+pip install accessibility-champion[dev]     # build, twine, and coverage
 ```
 
 After install, use the `a11y-lint` console script:
@@ -61,6 +61,7 @@ a11y-lint demo/passing_page.html  # exits 0 — score 100/100
 | `--json` | Output results as a JSON array (one entry per file) |
 | `--fragment` | Treat input as an HTML fragment; skip full-page landmark and single-`<h1>` checks |
 | `--full-page` | Force full-page mode even when `<html>` / `<body>` tags are absent |
+| `--axe` | Merge axe-core results when Node.js and `axe-core` + `jsdom` are installed (see below) |
 
 **Auto-detection:** When neither `--fragment` nor `--full-page` is passed, the linter treats markup as a **fragment** unless it contains an `<html>` or `<body>` tag. Full-page landmark checks (`<main>`, `<header>`, `<nav>`, `<footer>`, single `<h1>`) only run in full-page mode.
 
@@ -70,6 +71,10 @@ a11y-lint path/to/your/file.html --json
 
 # Lint a partial HTML snippet (e.g., a component template)
 a11y-lint path/to/fragment.html --fragment
+
+# Static + rendered audit (requires Node.js)
+npm install axe-core jsdom
+a11y-lint path/to/your/file.html --axe
 ```
 
 ### Exit Codes
@@ -132,16 +137,24 @@ total = score(violations)
 
 ## Scoring Model
 
-The Accessibility Score starts at 100 and deducts points based on severity:
+The Accessibility Score starts at 100. Deductions are grouped **by rule ID** so repeated instances of the same issue do not zero out the score before other problems are reflected.
 
-| Severity | Points | Examples |
-|----------|--------|----------|
+| Severity | Base cap (1 hit) | Examples |
+|----------|------------------|----------|
 | **Critical** | −20 | Missing `alt`, unlabelled form controls, buttons without accessible names |
 | **Serious** | −10 | Missing `lang`, duplicate IDs, generic link text, missing `iframe` title |
 | **Moderate** | −5 | Skipped heading levels, missing `<main>`, ungrouped radio/checkbox sets |
 | **Minor** | −2 | Missing `autocomplete` on personal-data fields, optional landmark regions |
 
-The score is clamped to a minimum of 0.
+**Per-rule scaling** (applied once per rule ID, not per violation):
+
+| Violations of same rule | Multiplier | Example (`image-alt`, critical) |
+|-------------------------|------------|----------------------------------|
+| 1 | 1× base cap | −20 |
+| 2–4 | 1.5× base cap | −30 (capped) |
+| 5+ | 2× base cap | −30 (absolute max per rule) |
+
+No single rule can deduct more than **−30** points. The total score is still clamped to a minimum of 0.
 
 ## Current Checks
 
@@ -208,11 +221,24 @@ Presentation tables (`role="presentation"`) are exempt from table header/caption
 ```
 a11y_lint.py      CLI entry point; thin HTMLParser dispatcher
 a11y_context.py   ParseContext (shared state) and TagAttrs helpers
-a11y_rules.py     Individual A11yRule classes registered via all_rules()
+a11y_rules/       Individual A11yRule classes registered via all_rules()
 a11y_focus.py     CSS rule-block parser for focus-outline checks
+a11y_axe.py       Optional axe-core merge via inline Node.js script (--axe)
 ```
 
-To add a new check, create a class extending `A11yRule` in `a11y_rules.py` with `on_starttag`, `on_endtag`, `on_data`, and/or `finalize` hooks, then register it in `all_rules()`.
+To add a new check, create a class extending `A11yRule` under `a11y_rules/` with `on_starttag`, `on_endtag`, `on_data`, and/or `finalize` hooks, then register it in `a11y_rules/__init__.py`.
+
+## AI Agent Integration
+
+[`SKILL.md`](./SKILL.md) is a workflow guide for AI coding agents (Cursor, Copilot, Claude, etc.) that run accessibility audits on your behalf. It documents when to lint, how to interpret JSON output, and which checks require human follow-up.
+
+**Update `SKILL.md` when you:**
+
+- Add or rename rule IDs
+- Add or change CLI flags (e.g. `--fragment`, `--axe`)
+- Change the violation JSON schema or scoring model
+
+Agents load `SKILL.md` as context; keeping it in sync with the linter avoids stale audit instructions.
 
 ## Running Tests
 
@@ -220,7 +246,13 @@ To add a new check, create a class extending `A11yRule` in `a11y_rules.py` with 
 python3 -m unittest test_a11y_lint -v
 ```
 
-The suite covers fixture pages, individual rules, CLI behavior, fragment mode, and edge cases (30 tests). **Every new rule must include tests** that verify both failing and passing markup.
+The suite covers fixture pages, individual rules, CLI behavior, fragment mode, scoring caps, axe mapping, and edge cases (46 tests). **Every new rule must include tests** that verify both failing and passing markup.
+
+With dev dependencies installed:
+
+```bash
+coverage run -m unittest test_a11y_lint -v && coverage report -m
+```
 
 ## Limitations
 
@@ -245,14 +277,17 @@ Always supplement this tool with screen reader testing, keyboard navigation audi
 
 ## Project Layout
 
-- `a11y_lint.py` — CLI entry point and thin HTML parser dispatcher
-- `a11y_context.py` — Shared parse context and attribute helpers
-- `a11y_rules.py` — Individual accessibility rule implementations
-- `a11y_focus.py` — CSS focus-outline checks for `<style>` blocks and inline styles
-- `demo/broken_page.html` — Fixture demonstrating failing checks
-- `demo/passing_page.html` — Fixture demonstrating passing checks
-- `test_a11y_lint.py` — Automated test suite
-- `SKILL.md` — AI agent integration guidelines for accessibility audit workflows
+| Path | Purpose |
+|------|---------|
+| `a11y_lint.py` | CLI entry point and thin HTML parser dispatcher |
+| `a11y_context.py` | Shared parse context and attribute helpers |
+| `a11y_rules/` | Individual accessibility rule implementations |
+| `a11y_focus.py` | CSS focus-outline checks for `<style>` blocks and inline styles |
+| `a11y_axe.py` | Optional axe-core merge (`--axe`) |
+| `demo/broken_page.html` | Fixture demonstrating failing checks |
+| `demo/passing_page.html` | Fixture demonstrating passing checks |
+| `test_a11y_lint.py` | Automated test suite |
+| `SKILL.md` | AI agent integration guidelines — update when rule IDs or CLI flags change |
 
 ## Roadmap
 
@@ -261,7 +296,7 @@ See [ROADMAP.md](./ROADMAP.md) for the phased plan to expand coverage toward ful
 ## Contributing
 
 1. Keep changes small and surgical.
-2. Add new rules as `A11yRule` subclasses in `a11y_rules.py`; register them in `all_rules()`.
+2. Add new rules as `A11yRule` subclasses under `a11y_rules/`; register them in `all_rules()`.
 3. Add tests to `test_a11y_lint.py` for both failing and passing markup.
 4. Prefer the HTML parser over regular expressions for structural checks.
 5. Update this README when adding new rule IDs, CLI flags, or architectural changes.

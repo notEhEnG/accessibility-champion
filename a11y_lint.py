@@ -11,11 +11,14 @@ import argparse
 from pathlib import Path
 from html.parser import HTMLParser
 
+from collections import defaultdict
+
 from a11y_context import ParseContext, TagAttrs, Violation
 from a11y_focus import check_focus_visible
 from a11y_rules import all_rules
 
 SEVERITY_WEIGHTS = {"critical": 20, "serious": 10, "moderate": 5, "minor": 2}
+RULE_SCORE_ABSOLUTE_MAX = 30
 
 
 class A11yHTMLParser(HTMLParser):
@@ -64,8 +67,30 @@ def check_html(source: str, fragment: bool | None = None) -> list[Violation]:
     return sorted(violations, key=lambda item: item["line"])
 
 
+def _count_multiplier(count: int) -> float:
+    if count <= 1:
+        return 1.0
+    if count <= 4:
+        return 1.5
+    return 2.0
+
+
+def rule_deduction(severity: str, count: int) -> int:
+    """Per-rule score cap scaled by violation count (max −30 per rule id)."""
+    base = SEVERITY_WEIGHTS.get(severity, 0)
+    if count <= 0:
+        return 0
+    return min(int(base * _count_multiplier(count)), RULE_SCORE_ABSOLUTE_MAX)
+
+
 def score(violations: list[Violation]) -> int:
-    deduction = sum(SEVERITY_WEIGHTS.get(v["severity"], 0) for v in violations)
+    groups: dict[str, list[Violation]] = defaultdict(list)
+    for violation in violations:
+        groups[violation["id"]].append(violation)
+    deduction = sum(
+        rule_deduction(items[0]["severity"], len(items))
+        for items in groups.values()
+    )
     return max(0, 100 - deduction)
 
 
@@ -108,6 +133,11 @@ def main():
         action="store_true",
         help="Treat input as a full page even without <html>/<body> tags",
     )
+    parser.add_argument(
+        "--axe",
+        action="store_true",
+        help="Merge axe-core rendered audit results when Node.js and axe-core are available",
+    )
 
     args = parser.parse_args()
     if args.fragment and args.full_page:
@@ -127,6 +157,10 @@ def main():
             continue
 
         violations = check_html(source, fragment=fragment)
+        if args.axe:
+            from a11y_axe import merge_axe_results
+
+            violations = merge_axe_results(Path(path), violations)
         s = score(violations)
         results.append({"file": path, "score": s, "violations": violations})
 

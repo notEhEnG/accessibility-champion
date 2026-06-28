@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package and dev dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run unit tests
+        run: python -m unittest test_a11y_lint -v
+
+      - name: Lint demo broken page (expect exit 1)
+        run: |
+          set +e
+          a11y-lint demo/broken_page.html
+          code=$?
+          set -e
+          test "$code" -eq 1
+
+      - name: Lint demo passing page (expect exit 0)
+        run: a11y-lint demo/passing_page.html
+
+      - name: Generate coverage report
+        run: |
+          coverage run -m unittest test_a11y_lint -v
+          coverage xml
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml-py${{ matrix.python-version }}
+          path: coverage.xml
+          if-no-files-found: error

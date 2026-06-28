@@ -1,8 +1,12 @@
-import unittest
 import json
 import subprocess
+import unittest
 from pathlib import Path
-from a11y_lint import check_html, score, check_focus_visible
+from unittest.mock import patch
+
+from a11y_axe import dedupe_violations, map_axe_to_violations, merge_axe_results
+from a11y_focus import check_focus_visible
+from a11y_lint import check_html, rule_deduction, score
 
 class TestA11yLint(unittest.TestCase):
     def setUp(self):
@@ -305,6 +309,161 @@ class TestA11yLint(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 1)
         self.assertIn("File not found", result.stderr)
+
+    def test_score_single_critical_violation(self):
+        violations = [{
+            "id": "image-alt",
+            "severity": "critical",
+            "line": 1,
+            "message": "missing",
+            "fix": "add alt",
+            "wcag": "1.1.1",
+        }]
+        self.assertEqual(score(violations), 80)
+        self.assertEqual(rule_deduction("critical", 1), 20)
+
+    def test_score_caps_repeated_rule(self):
+        violations = [
+            {
+                "id": "image-alt",
+                "severity": "critical",
+                "line": i,
+                "message": "missing",
+                "fix": "add alt",
+                "wcag": "1.1.1",
+            }
+            for i in range(1, 6)
+        ]
+        self.assertEqual(rule_deduction("critical", 5), 30)
+        self.assertEqual(score(violations), 70)
+
+    def test_score_scales_medium_count(self):
+        violations = [
+            {
+                "id": "link-name",
+                "severity": "serious",
+                "line": i,
+                "message": "generic",
+                "fix": "describe",
+                "wcag": "2.4.4",
+            }
+            for i in range(1, 4)
+        ]
+        self.assertEqual(rule_deduction("serious", 3), 15)
+        self.assertEqual(score(violations), 85)
+
+    def test_empty_alt_passes_image_alt(self):
+        source = """<html lang="en"><main><img src="dot.png" alt=""></main></html>"""
+        violation_ids = [v["id"] for v in check_html(source)]
+        self.assertNotIn("image-alt", violation_ids)
+
+    def test_aria_label_passes_input_unlabelled(self):
+        source = """<html lang="en"><main><input type="text" aria-label="Search"></main></html>"""
+        violation_ids = [v["id"] for v in check_html(source)]
+        self.assertNotIn("input-unlabelled", violation_ids)
+        self.assertNotIn("input-missing-label", violation_ids)
+
+    def test_single_radio_skips_form_group_fieldset(self):
+        source = """<html lang="en"><main><input type="radio" name="color" value="red"></main></html>"""
+        violation_ids = [v["id"] for v in check_html(source)]
+        self.assertNotIn("form-group-fieldset", violation_ids)
+
+    def test_image_alt_quality_fail_and_pass(self):
+        bad = """<html lang="en"><main><img src="a.png" alt="image"></main></html>"""
+        good = """<html lang="en"><main><img src="a.png" alt="Team celebrating launch"></main></html>"""
+        self.assertIn("image-alt-quality", [v["id"] for v in check_html(bad)])
+        self.assertNotIn("image-alt-quality", [v["id"] for v in check_html(good)])
+
+    def test_no_autoplay_fail_and_pass(self):
+        bad = """<html lang="en"><main><audio src="a.mp3" autoplay></audio></main></html>"""
+        good = """<html lang="en"><main><audio src="a.mp3" controls></audio>
+            <a href="transcript.html">Transcript</a></main></html>"""
+        self.assertIn("no-autoplay", [v["id"] for v in check_html(bad)])
+        self.assertNotIn("no-autoplay", [v["id"] for v in check_html(good)])
+
+    def test_heading_order_fail_and_pass(self):
+        bad = """<html lang="en"><body><header></header><nav></nav>
+            <main><h1>Title</h1><h3>Skipped</h3></main><footer></footer></body></html>"""
+        good = """<html lang="en"><body><header></header><nav></nav>
+            <main><h1>Title</h1><h2>Section</h2></main><footer></footer></body></html>"""
+        self.assertIn("heading-order", [v["id"] for v in check_html(bad)])
+        self.assertNotIn("heading-order", [v["id"] for v in check_html(good)])
+
+    def test_table_caption_fail_and_pass(self):
+        bad = """<html lang="en"><main><table><tr><th>Name</th></tr><tr><td>A</td></tr></table></main></html>"""
+        good = """<html lang="en"><main><table><caption>People</caption>
+            <tr><th>Name</th></tr><tr><td>A</td></tr></table></main></html>"""
+        self.assertIn("table-caption", [v["id"] for v in check_html(bad)])
+        self.assertNotIn("table-caption", [v["id"] for v in check_html(good)])
+
+    def test_html_has_lang_pass(self):
+        source = """<html lang="en"><body><main></main></body></html>"""
+        self.assertNotIn("html-has-lang", [v["id"] for v in check_html(source)])
+
+    def test_aria_invalid_with_describedby_passes(self):
+        source = """<html lang="en"><main>
+            <input id="email" aria-invalid="true" aria-describedby="email-err">
+            <span id="email-err">Invalid email</span>
+        </main></html>"""
+        self.assertNotIn("aria-invalid-no-desc", [v["id"] for v in check_html(source)])
+
+    def test_focus_visible_inline_style(self):
+        source = """<html lang="en"><main><button style="outline: none;">X</button></main></html>"""
+        violations = check_focus_visible(source)
+        self.assertEqual(len(violations), 1)
+        self.assertEqual(violations[0]["id"], "focus-visible")
+
+    def test_map_axe_to_violations(self):
+        raw = {
+            "violations": [{
+                "id": "color-contrast",
+                "impact": "serious",
+                "help": "Elements must have sufficient color contrast",
+                "helpUrl": "https://dequeuniversity.com/rules/axe/4.9/color-contrast",
+                "tags": ["wcag2aa", "wcag143"],
+                "nodes": [{"html": "<p>Low contrast</p>", "target": ["p"]}],
+            }]
+        }
+        mapped = map_axe_to_violations(raw)
+        self.assertEqual(len(mapped), 1)
+        self.assertEqual(mapped[0]["id"], "axe-color-contrast")
+        self.assertEqual(mapped[0]["severity"], "serious")
+
+    def test_dedupe_axe_by_id_and_line(self):
+        static = [{
+            "id": "axe-color-contrast",
+            "severity": "serious",
+            "line": 3,
+            "message": "static",
+            "fix": "",
+            "wcag": "",
+        }]
+        axe = [{
+            "id": "axe-color-contrast",
+            "severity": "serious",
+            "line": 3,
+            "message": "axe",
+            "fix": "",
+            "wcag": "",
+        }, {
+            "id": "axe-image-alt",
+            "severity": "critical",
+            "line": 5,
+            "message": "axe alt",
+            "fix": "",
+            "wcag": "",
+        }]
+        merged = dedupe_violations(static, axe)
+        self.assertEqual(len(merged), 2)
+
+    @patch("a11y_axe.run_axe")
+    @patch("a11y_axe.is_node_available", return_value=True)
+    def test_merge_axe_results_graceful_when_run_fails(self, _node, mock_run):
+        mock_run.return_value = None
+        passing = self.demo_dir / "passing_page.html"
+        violations = check_html(passing.read_text(encoding="utf-8"))
+        merged = merge_axe_results(passing, violations)
+        self.assertEqual(merged, violations)
 
 
 if __name__ == "__main__":

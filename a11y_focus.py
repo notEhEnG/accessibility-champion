@@ -76,7 +76,7 @@ def check_focus_visible(source: str) -> list[Violation]:
                 violations.append(item)
 
     for match in re.finditer(r'\bstyle\s*=\s*["\']([^"\']*)["\']', source, re.IGNORECASE):
-        rules = _parse_css_rules(match.group(1), match.start(1))
+        rules = [("*", match.group(1), match.start(1))]
         for item in _check_css_rules(rules, source):
             if item["line"] not in seen_lines:
                 seen_lines.add(item["line"])

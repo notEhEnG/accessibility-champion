@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "accessibility-champion"
-version = "0.2.0"
+version = "0.1.3"
 description = "Lightweight static HTML accessibility linter for WCAG 2.2"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -30,7 +30,7 @@ classifiers = [
 # Phase 3 — CSS engine (see phases/Phase 3/PHASE.md)
 css = ["tinycss2>=1.2.0"]
 # Local development / PyPI publish
-dev = ["build>=1.0.0", "twine>=4.0.0"]
+dev = ["build>=1.0.0", "twine>=4.0.0", "coverage>=7.0.0"]
 
 [project.urls]
 Homepage = "https://github.com/notEhEnG/accessibility-champion"
@@ -45,7 +45,8 @@ a11y-lint = "a11y_lint:cli"
 py-modules = [
     "a11y_lint",
     "a11y_context",
-    "a11y_focus"
+    "a11y_focus",
+    "a11y_axe",
 ]
 
 [tool.setuptools.packages.find]
