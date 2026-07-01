@@ -75,6 +75,7 @@ class PageState:
     html_line: int = 1
     nav_line: int = 1
     head_line: int = 1
+    first_h1_line: int = 1
 
 
 @dataclass

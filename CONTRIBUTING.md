@@ -55,4 +55,4 @@ def test_example_rule_passes(self):
 - [ ] SKILL.md `[linter]` list updated
 - [ ] Demo fixture updated if rule appears in `broken_page.html`
 - [ ] Respects `ctx.fragment_mode` and full-page checks
-- [ ] No file > 400 lines
+- [ ] No file > 400 lines (`python3 scripts/check_max_file_size.py`)

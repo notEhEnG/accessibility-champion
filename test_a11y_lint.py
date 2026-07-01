@@ -223,7 +223,9 @@ class TestA11yLint(unittest.TestCase):
             <nav></nav><main></main><footer></footer>
         </body></html>"""
         violations = check_html(source)
-        self.assertIn("heading-single-h1", [v["id"] for v in violations])
+        h1_violations = [v for v in violations if v["id"] == "heading-single-h1"]
+        self.assertEqual(len(h1_violations), 1)
+        self.assertEqual(h1_violations[0]["line"], 2)
 
     def test_select_missing_label(self):
         source = """<html lang="en"><main><select id="country"></select></main></html>"""

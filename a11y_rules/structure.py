@@ -70,6 +70,8 @@ class HeadingRule(A11yRule):
         level = int(tag[1])
         if tag == "h1":
             ctx.page.h1_count += 1
+            if ctx.page.h1_count == 1:
+                ctx.page.first_h1_line = line
 
         if ctx.page.headings_seen:
             prev_level = ctx.page.headings_seen[-1]
@@ -90,7 +92,7 @@ class HeadingRule(A11yRule):
         ctx.add_violation(
             id="heading-single-h1",
             severity="moderate",
-            line=ctx.page_line(),
+            line=ctx.page.first_h1_line,
             message=f"Page has {ctx.page.h1_count} <h1> elements; expected exactly one per page",
             fix="Use a single <h1> for the page title and demote other top-level headings to <h2>",
             wcag="1.3.1 Info and Relationships",
