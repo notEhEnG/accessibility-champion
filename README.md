@@ -65,6 +65,8 @@ a11y-lint demo/passing_page.html  # exits 0 — score 100/100
 | `--extract` | Extract HTML from framework templates (`.tsx`, `.jsx`, `.vue`, `.svelte`, `.component.html`) before linting |
 | `--glob` | Treat each argument as a glob pattern, expanded recursively (CI batch mode) |
 | `--no-sidecar` | Skip writing the `*.extract-map.json` sidecar during extraction |
+| `--no-css` | Skip the CSS pass (contrast, touch targets, font size) for faster CI runs |
+| `--base-url` | Base URL or directory used to resolve `<link rel="stylesheet">` sheets (best-effort) |
 
 **Auto-detection:** When neither `--fragment` nor `--full-page` is passed, the linter treats markup as a **fragment** unless it contains an `<html>` or `<body>` tag. Full-page landmark checks (`<main>`, `<header>`, `<nav>`, `<footer>`, single `<h1>`) only run in full-page mode.
 
@@ -216,6 +218,8 @@ No single rule can deduct more than **−30** points. The total score is still c
 | `audio-transcript` | `<audio>` without nearby transcript link/text (heuristic) |
 | `document-title` | Full page missing non-empty `<title>` in `<head>` |
 | `decorative-img-role` | Decorative `alt=""` image missing `role="presentation"` (advisory) |
+| `color-contrast` | Text/background contrast below 4.5:1 from inline/`<style>`/linked CSS (heuristic) |
+| `font-size-px-only` | Inline `font-size` in `px` without a `rem`/`em` fallback (heuristic) |
 
 ### Pillar 2 — Operable
 
@@ -230,6 +234,8 @@ No single rule can deduct more than **−30** points. The total score is still c
 | `target-blank-no-warning` | `target="_blank"` without accessible new-window warning |
 | `empty-link` | `<a>` with no meaningful `href` (missing or `href="#"`) |
 | `filename-link-text` | Link text that is just a filename (`report.pdf`) (heuristic) |
+| `touch-target-size` | Interactive element sized below 44×44 CSS px from declared CSS (heuristic) |
+| `pointer-events-none-interactive` | Interactive element with inline `pointer-events: none` |
 
 Focus-outline analysis parses CSS rule blocks inside `<style>` elements and inline `style=""` attributes. It matches base selectors (e.g., `.btn`) to companion `:focus-visible` rules that restore a visible outline.
 
@@ -270,8 +276,27 @@ Applies to `<input>`, `<select>`, and `<textarea>`.
 | `list-structure` | 3+ consecutive links in bare `<div>`s (heuristic) — use `<ul>`/`<nav>` |
 | `aria-hidden-focusable` | Focusable element inside an `aria-hidden="true"` subtree |
 | `redundant-role` | Redundant role restating an implicit role (`role="button"` on `<button>`) |
+| `css-link-empty` | `<link rel="stylesheet">` with an empty `href` |
 
 Presentation tables (`role="presentation"`) are exempt from table header/caption checks.
+
+### CSS engine (contrast, touch targets, focus)
+
+The CSS pass (`a11y_css.py`) reads inline `style=""`, `<style>` blocks, and — with `--base-url` —
+best-effort linked stylesheets. Install the optional parser for accurate tokenizing:
+
+```bash
+pip install "accessibility-champion[css]"   # adds tinycss2 (falls back to regex if absent)
+```
+
+All CSS findings carry `source: "css"` and a `fix_confidence` of `assisted` or `manual`. **Known limits — do not over-claim:**
+
+- **No browser cascade** — only inline, `<style>`, and best-effort linked sheets; no full inheritance/layout.
+- **`var()` / `calc()` / `clamp()`** are treated as unknown and **skipped** (no guessed violations).
+- **Gradients / background images** are not sampled — use `--axe` for computed-DOM contrast.
+- Touch-target size uses declared CSS only, not rendered geometry.
+
+Pass `--no-css` to skip this pass entirely in speed-sensitive CI.
 
 ## Architecture
 
@@ -279,7 +304,9 @@ Presentation tables (`role="presentation"`) are exempt from table header/caption
 a11y_lint.py      CLI entry point; thin HTMLParser dispatcher
 a11y_context.py   ParseContext (shared state) and TagAttrs helpers
 a11y_rules/       Individual A11yRule classes registered via all_rules()
-a11y_focus.py     CSS rule-block parser for focus-outline checks
+a11y_extract.py   Framework-template HTML extraction + line remapping (--extract)
+a11y_css.py       CSS engine: contrast, touch targets, focus, pointer-events, font-size
+a11y_focus.py     Focus-outline checks (delegates to a11y_css)
 a11y_axe.py       Optional axe-core merge via inline Node.js script (--axe)
 ```
 
@@ -310,10 +337,10 @@ Agents load `SKILL.md` as context; keeping it in sync with the linter avoids sta
 ## Running Tests
 
 ```bash
-python3 -m unittest test_a11y_lint test_a11y_extract test_phase2 -v
+python3 -m unittest test_a11y_lint test_a11y_extract test_phase2 test_phase3 -v
 ```
 
-The suite covers fixture pages, individual rules, CLI behavior, fragment mode, scoring caps, axe mapping, framework extraction, and edge cases (78 tests). **Every new rule must include tests** that verify both failing and passing markup.
+The suite covers fixture pages, individual rules, CLI behavior, fragment mode, scoring caps, axe mapping, framework extraction, CSS contrast/touch/focus checks, and edge cases (92 tests). **Every new rule must include tests** that verify both failing and passing markup.
 
 With dev dependencies installed:
 
@@ -349,14 +376,16 @@ Always supplement this tool with screen reader testing, keyboard navigation audi
 | `a11y_lint.py` | CLI entry point and thin HTML parser dispatcher |
 | `a11y_context.py` | Shared parse context and attribute helpers |
 | `a11y_rules/` | Individual accessibility rule implementations |
-| `a11y_focus.py` | CSS focus-outline checks for `<style>` blocks and inline styles |
+| `a11y_focus.py` | Focus-outline checks (delegates to the shared CSS walker) |
+| `a11y_css.py` | CSS engine — contrast, touch targets, pointer-events, font-size, focus |
+| `a11y_css_fetch.py` | Best-effort linked-stylesheet resolution (`--base-url`) |
 | `a11y_axe.py` | Optional axe-core merge (`--axe`) |
 | `a11y_extract.py` | Framework-template HTML extractors (`--extract`) |
 | `a11y_mapping.py` | Line-mapping model and `*.extract-map.json` sidecar I/O |
-| `fixtures/` | Framework-template fixtures (`.tsx`, `.vue`, `.svelte`, `.component.html`) |
+| `fixtures/` | Framework-template + CSS fixtures |
 | `demo/broken_page.html` | Fixture demonstrating failing checks |
 | `demo/passing_page.html` | Fixture demonstrating passing checks |
-| `test_a11y_lint.py`, `test_a11y_extract.py`, `test_phase2.py` | Automated test suite |
+| `test_a11y_lint.py`, `test_a11y_extract.py`, `test_phase2.py`, `test_phase3.py` | Automated test suite |
 | `SKILL.md` | AI agent integration guidelines — update when rule IDs or CLI flags change |
 
 ## Roadmap

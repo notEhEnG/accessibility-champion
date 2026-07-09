@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "accessibility-champion"
-version = "0.3.0"
-description = "Static HTML and framework-template accessibility linter for WCAG 2.2"
+version = "0.4.0"
+description = "Static HTML, framework-template, and CSS accessibility linter for WCAG 2.2"
 readme = "README.md"
 requires-python = ">=3.8"
 license = { file = "LICENSE" }
@@ -49,6 +49,8 @@ py-modules = [
     "a11y_axe",
     "a11y_extract",
     "a11y_mapping",
+    "a11y_css",
+    "a11y_css_fetch",
 ]
 
 [tool.setuptools.packages.find]
@@ -57,7 +59,7 @@ include = ["a11y_rules*"]
 
 # Phase roadmap — specs: phases/Phase N/ARCHITECTURE.md (local planning, gitignored)
 [tool.accessibility-champion]
-current-phase = "3"
+current-phase = "4"
 planning-root = "phases"
 architecture-doc = "phases/Phase {phase}/ARCHITECTURE.md"
 
@@ -80,9 +82,10 @@ deliverables = ["*.extract-map.json sidecar", "framework extractors", "11 struct
 
 [tool.accessibility-champion.phases."3"]
 version = "0.4.0"
-status = "planned"
-modules = ["a11y_css.py"]
+status = "complete"
+modules = ["a11y_css.py", "a11y_css_fetch.py"]
 optional-deps = ["css"]
+deliverables = ["color-contrast", "touch-target-size", "pointer-events-none-interactive", "font-size-px-only", "--no-css/--base-url"]
 
 [tool.accessibility-champion.phases."4"]
 version = "0.5.0"

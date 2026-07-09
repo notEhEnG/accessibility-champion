@@ -17,8 +17,8 @@ This project has **two layers**:
 
 | Layer | Tool | Scope |
 |-------|------|-------|
-| **Static linter** | `a11y_lint.py` | `.html` files + framework templates via `--extract` — 43 automated rule IDs, fast CI triage |
-| **Agent + axe** | This skill | JSX/Vue/Angular/Svelte contrast, keyboard, ARIA behavior, intent (beyond the linter's static reach) |
+| **Static linter** | `a11y_lint.py` | `.html` + framework templates (`--extract`) + CSS heuristics (contrast/touch/focus) — 48 automated rule IDs, fast CI triage |
+| **Agent + axe** | This skill | JSX/Vue/Angular/Svelte keyboard, ARIA behavior, computed-style contrast, intent (beyond the linter's static reach) |
 
 For plain HTML, **always run the linter first**, then apply manual pillar checks for anything the linter cannot detect. See [README.md](./README.md) for the full rule reference.
 
@@ -51,6 +51,10 @@ python3 a11y_lint.py path/to/fragment.html --fragment
 
 # Framework template — extract HTML, lint, remap lines to the source file
 python3 a11y_lint.py path/to/LoginForm.tsx --extract --json
+
+# CSS heuristics run by default; skip them for speed, or resolve linked sheets
+python3 a11y_lint.py path/to/page.html --no-css
+python3 a11y_lint.py path/to/page.html --base-url https://example.com/dist/ --json
 ```
 
 Extraction is automatic for `.tsx`, `.jsx`, `.vue`, `.svelte`, and `.component.html`. Violation
@@ -65,12 +69,14 @@ violations = check_html(source)
 total = score(violations)
 ```
 
-**43 linter rule IDs** (by pillar — details in README):
+**48 linter rule IDs** (by pillar — details in README):
 
-- **Perceivable:** `html-has-lang`, `image-alt`, `image-alt-quality`, `no-autoplay`, `video-captions`, `audio-transcript`, `document-title`, `decorative-img-role`
-- **Operable:** `button-name`, `link-name`, `focus-visible`, `skip-link`, `tabindex-positive`, `button-type-missing`, `target-blank-no-warning`, `empty-link`, `filename-link-text`
+- **Perceivable:** `html-has-lang`, `image-alt`, `image-alt-quality`, `no-autoplay`, `video-captions`, `audio-transcript`, `document-title`, `decorative-img-role`, `color-contrast`, `font-size-px-only`
+- **Operable:** `button-name`, `link-name`, `focus-visible`, `skip-link`, `tabindex-positive`, `button-type-missing`, `target-blank-no-warning`, `empty-link`, `filename-link-text`, `touch-target-size`, `pointer-events-none-interactive`
 - **Understandable:** `input-unlabelled`, `input-missing-label`, `placeholder-as-label`, `input-autocomplete`, `aria-invalid-no-desc`, `required-indicator`, `select-empty-label`, `lang-subtag`
-- **Robust & structure:** `duplicate-id`, `form-group-fieldset`, `aria-describedby-missing-target`, `aria-labelledby-target`, `heading-order`, `heading-single-h1`, `frame-title`, `table-th`, `table-caption`, `missing-main`, `missing-header-landmark`, `missing-nav-landmark`, `missing-footer-landmark`, `landmark-nesting`, `empty-heading`, `list-structure`, `aria-hidden-focusable`, `redundant-role`
+- **Robust & structure:** `duplicate-id`, `form-group-fieldset`, `aria-describedby-missing-target`, `aria-labelledby-target`, `heading-order`, `heading-single-h1`, `frame-title`, `table-th`, `table-caption`, `missing-main`, `missing-header-landmark`, `missing-nav-landmark`, `missing-footer-landmark`, `landmark-nesting`, `empty-heading`, `list-structure`, `aria-hidden-focusable`, `redundant-role`, `css-link-empty`
+
+CSS findings (`color-contrast`, `touch-target-size`, `pointer-events-none-interactive`, `font-size-px-only`) carry `source: css` and `fix_confidence` (`assisted`/`manual`). They're heuristic: `var()`/`calc()` are skipped, gradients aren't sampled — pair with `--axe` for computed-style compliance. Install `accessibility-champion[css]` (tinycss2) for accurate parsing.
 
 Merge linter JSON violations into your audit report. Do not re-derive checks the linter already covers.
 
@@ -306,7 +312,7 @@ Always include:
 2. Keyboard navigation test (skip link, tab order)
 3. Tests targeting critical/serious issues from the audit
 
-For HTML projects, also keep `python3 -m unittest test_a11y_lint test_a11y_extract test_phase2 -v` passing when changing linter rules.
+For HTML projects, also keep `python3 -m unittest test_a11y_lint test_a11y_extract test_phase2 test_phase3 -v` passing when changing linter rules.
 
 ---
 

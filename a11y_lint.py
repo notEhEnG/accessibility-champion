@@ -57,7 +57,13 @@ def _detect_fragment_mode(source: str, fragment: bool | None) -> bool:
     return not re.search(r"<(?:html|body)\b", source, re.IGNORECASE)
 
 
-def check_html(source: str, fragment: bool | None = None) -> list[Violation]:
+def check_html(
+    source: str,
+    fragment: bool | None = None,
+    *,
+    css: bool = True,
+    base_url: str | None = None,
+) -> list[Violation]:
     ctx = ParseContext(
         source=source,
         fragment_mode=_detect_fragment_mode(source, fragment),
@@ -68,7 +74,13 @@ def check_html(source: str, fragment: bool | None = None) -> list[Violation]:
     for rule in rules:
         rule.finalize(ctx)
     violations = list(ctx.violations)
-    violations.extend(check_focus_visible(source))
+    if css:
+        # check_css_accessibility already includes the focus-visible pass.
+        from a11y_css import check_css_accessibility
+
+        violations.extend(check_css_accessibility(source, base_url=base_url))
+    else:
+        violations.extend(check_focus_visible(source))
     return sorted(violations, key=lambda item: item["line"])
 
 
@@ -159,6 +171,16 @@ def main():
         action="store_true",
         help="Skip writing the *.extract-map.json sidecar during extraction",
     )
+    parser.add_argument(
+        "--no-css",
+        action="store_true",
+        help="Skip the CSS accessibility pass (contrast, touch targets, font size) for CI speed",
+    )
+    parser.add_argument(
+        "--base-url",
+        default=None,
+        help="Base URL or directory for resolving linked stylesheets (best-effort)",
+    )
 
     args = parser.parse_args()
     if args.fragment and args.full_page:
@@ -188,6 +210,8 @@ def main():
                 violations = check_html(
                     result.html,
                     fragment=result.fragment if result.fragment else fragment,
+                    css=not args.no_css,
+                    base_url=args.base_url,
                 )
                 violations = remap_violations(violations, result.mappings, result.source_file)
                 if not args.no_sidecar:
@@ -195,7 +219,9 @@ def main():
                 file_key = result.source_file
             else:
                 source = path_obj.read_text(encoding="utf-8")
-                violations = check_html(source, fragment=fragment)
+                violations = check_html(
+                    source, fragment=fragment, css=not args.no_css, base_url=args.base_url
+                )
                 if args.axe:
                     from a11y_axe import merge_axe_results
 
