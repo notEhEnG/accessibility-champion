@@ -17,8 +17,8 @@ This project has **two layers**:
 
 | Layer | Tool | Scope |
 |-------|------|-------|
-| **Static linter** | `a11y_lint.py` | `.html` files — 32 automated rules, fast CI triage |
-| **Agent + axe** | This skill | JSX/Vue/Angular/Svelte, contrast, keyboard, ARIA behavior, intent |
+| **Static linter** | `a11y_lint.py` | `.html` files + framework templates via `--extract` — 43 automated rule IDs, fast CI triage |
+| **Agent + axe** | This skill | JSX/Vue/Angular/Svelte contrast, keyboard, ARIA behavior, intent (beyond the linter's static reach) |
 
 For plain HTML, **always run the linter first**, then apply manual pillar checks for anything the linter cannot detect. See [README.md](./README.md) for the full rule reference.
 
@@ -48,7 +48,14 @@ python3 a11y_lint.py path/to/file.html --json
 
 # HTML fragment (skips full-page landmark / single-H1 checks)
 python3 a11y_lint.py path/to/fragment.html --fragment
+
+# Framework template — extract HTML, lint, remap lines to the source file
+python3 a11y_lint.py path/to/LoginForm.tsx --extract --json
 ```
+
+Extraction is automatic for `.tsx`, `.jsx`, `.vue`, `.svelte`, and `.component.html`. Violation
+`line` values refer to the **source file** after remapping; a `*.extract-map.json` sidecar records
+the mapping (`--no-sidecar` to skip). Use `--fragment` for partial component templates.
 
 Programmatic use:
 
@@ -58,12 +65,12 @@ violations = check_html(source)
 total = score(violations)
 ```
 
-**32 linter rule IDs** (by pillar — details in README):
+**43 linter rule IDs** (by pillar — details in README):
 
-- **Perceivable:** `html-has-lang`, `image-alt`, `image-alt-quality`, `no-autoplay`, `video-captions`, `audio-transcript`, `document-title`
-- **Operable:** `button-name`, `link-name`, `focus-visible`, `skip-link`, `tabindex-positive`, `button-type-missing`, `target-blank-no-warning`
-- **Understandable:** `input-unlabelled`, `input-missing-label`, `placeholder-as-label`, `input-autocomplete`, `aria-invalid-no-desc`
-- **Robust & structure:** `duplicate-id`, `form-group-fieldset`, `aria-describedby-missing-target`, `aria-labelledby-target`, `heading-order`, `heading-single-h1`, `frame-title`, `table-th`, `table-caption`, `missing-main`, `missing-header-landmark`, `missing-nav-landmark`, `missing-footer-landmark`
+- **Perceivable:** `html-has-lang`, `image-alt`, `image-alt-quality`, `no-autoplay`, `video-captions`, `audio-transcript`, `document-title`, `decorative-img-role`
+- **Operable:** `button-name`, `link-name`, `focus-visible`, `skip-link`, `tabindex-positive`, `button-type-missing`, `target-blank-no-warning`, `empty-link`, `filename-link-text`
+- **Understandable:** `input-unlabelled`, `input-missing-label`, `placeholder-as-label`, `input-autocomplete`, `aria-invalid-no-desc`, `required-indicator`, `select-empty-label`, `lang-subtag`
+- **Robust & structure:** `duplicate-id`, `form-group-fieldset`, `aria-describedby-missing-target`, `aria-labelledby-target`, `heading-order`, `heading-single-h1`, `frame-title`, `table-th`, `table-caption`, `missing-main`, `missing-header-landmark`, `missing-nav-landmark`, `missing-footer-landmark`, `landmark-nesting`, `empty-heading`, `list-structure`, `aria-hidden-focusable`, `redundant-role`
 
 Merge linter JSON violations into your audit report. Do not re-derive checks the linter already covers.
 
@@ -74,7 +81,7 @@ Merge linter JSON violations into your audit report. Do not re-derive checks the
 ```
 User shares code / page URL?
   ├── .html file → run a11y_lint.py FIRST, then FULL_AUDIT manual items
-  ├── .jsx/.vue/.svelte/etc. → agent FULL_AUDIT (no linter; extract HTML if possible)
+  ├── .tsx/.jsx/.vue/.svelte/.component.html → run a11y_lint.py --extract FIRST, then FULL_AUDIT manual items
   └── No code → ask: "Share a component, URL, or describe what you're building?"
 
 User wants fixes applied?
@@ -94,15 +101,15 @@ User wants tests?
 | Extension | Mode | Linter? |
 |-----------|------|---------|
 | `.html` | Plain HTML | **Yes** — run `a11y_lint.py` |
-| `.jsx` / `.tsx` | React/Next.js (`className`, `htmlFor`) | No — agent review |
-| `.vue` | Vue SFC (template block) | No — agent review |
-| `.component.html` | Angular | No — agent review |
-| `.svelte` | Svelte | No — agent review |
+| `.jsx` / `.tsx` | React/Next.js (`className`, `htmlFor`) | **Yes** — `a11y_lint.py --extract`, then agent review |
+| `.vue` | Vue SFC (template block) | **Yes** — `a11y_lint.py --extract`, then agent review |
+| `.component.html` | Angular | **Yes** — `a11y_lint.py --extract`, then agent review |
+| `.svelte` | Svelte | **Yes** — `a11y_lint.py --extract`, then agent review |
 | `.md` / raw markup | Plain HTML | Yes if valid HTML |
 
-### Step 1.5 — Run static linter (HTML only)
+### Step 1.5 — Run static linter (HTML or framework templates)
 
-1. Execute `python3 a11y_lint.py <file> --json`.
+1. Execute `python3 a11y_lint.py <file> --json` (add `--extract` for `.tsx`/`.jsx`/`.vue`/`.svelte`/`.component.html`).
 2. Include all linter violations in the final report with their `id`, `line`, `message`, and `fix`.
 3. Use the linter score as the baseline (same formula as Step 3).
 4. Proceed to Step 2 **only for items tagged `[agent]`, `[axe]`, or `[manual]`** — do not duplicate linter findings.
@@ -299,7 +306,7 @@ Always include:
 2. Keyboard navigation test (skip link, tab order)
 3. Tests targeting critical/serious issues from the audit
 
-For HTML projects, also keep `python3 -m unittest test_a11y_lint -v` passing when changing linter rules.
+For HTML projects, also keep `python3 -m unittest test_a11y_lint test_a11y_extract test_phase2 -v` passing when changing linter rules.
 
 ---
 

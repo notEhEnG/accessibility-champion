@@ -183,3 +183,73 @@ class ButtonTypeRule(A11yRule):
     def on_endtag(self, ctx: ParseContext, tag: str) -> None:
         if tag == "form":
             ctx.forms.form_depth = max(0, ctx.forms.form_depth - 1)
+
+
+class RequiredIndicatorRule(A11yRule):
+    """Required control without a visible or programmatic required indicator (heuristic)."""
+
+    def on_starttag(self, ctx: ParseContext, tag: str, attrs: TagAttrs, line: int) -> None:
+        if tag not in ("input", "select", "textarea"):
+            return
+        required = attrs.has("required") or attrs.get_lower("aria-required") == "true"
+        if not required:
+            return
+        ctx.forms.required_controls.append(
+            {"line": line, "tag": tag, "has_aria": attrs.has("aria-label")}
+        )
+
+    def finalize(self, ctx: ParseContext) -> None:
+        for ctrl in ctx.forms.required_controls:
+            if ctrl["has_aria"]:
+                continue
+            ctx.add_violation(
+                id="required-indicator",
+                severity="moderate",
+                line=ctrl["line"],
+                message=f"Required <{ctrl['tag']}> lacks a visible required indicator (heuristic)",
+                fix='Add visible "required" text, an asterisk with legend, or aria-describedby to a required hint',
+                wcag="3.3.2 Labels or Instructions",
+            )
+
+
+class SelectEmptyLabelRule(A11yRule):
+    """<select> whose empty first <option> is its only label."""
+
+    def on_starttag(self, ctx: ParseContext, tag: str, attrs: TagAttrs, line: int) -> None:
+        if tag == "select":
+            ctx.forms.select_stack.append({
+                "line": line,
+                "first_option_text": None,
+                "option_count": 0,
+                "has_label": attrs.has("aria-label") or attrs.has("aria-labelledby"),
+                "id": attrs.get("id"),
+            })
+        elif tag == "option" and ctx.forms.select_stack:
+            sel = ctx.forms.select_stack[-1]
+            if sel["option_count"] == 0:
+                sel["first_option_text"] = ""
+            sel["option_count"] += 1
+
+    def on_data(self, ctx: ParseContext, data: str) -> None:
+        if not ctx.forms.select_stack:
+            return
+        sel = ctx.forms.select_stack[-1]
+        if sel["option_count"] == 1 and sel["first_option_text"] is not None:
+            sel["first_option_text"] += data
+
+    def on_endtag(self, ctx: ParseContext, tag: str) -> None:
+        if tag != "select" or not ctx.forms.select_stack:
+            return
+        sel = ctx.forms.select_stack.pop()
+        if sel["has_label"] or (sel["id"] and sel["id"] in ctx.forms.label_fors):
+            return
+        first = (sel.get("first_option_text") or "").strip()
+        if first == "" and not ctx.in_tag("label"):
+            ctx.add_violation(
+                id="select-empty-label",
+                severity="serious",
+                line=sel["line"],
+                message="<select> uses an empty first <option> as its sole label",
+                fix='Add <label for="..."> or a non-empty first option with a real label',
+                wcag="3.3.2 Labels or Instructions",
+            )

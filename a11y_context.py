@@ -76,6 +76,9 @@ class PageState:
     nav_line: int = 1
     head_line: int = 1
     first_h1_line: int = 1
+    main_depth: int = 0                    # landmark-nesting (Phase 2)
+    anchor_streak: int = 0                 # list-structure (Phase 2)
+    heading_buffers: dict = field(default_factory=dict)  # empty-heading (Phase 2)
 
 
 @dataclass
@@ -86,6 +89,8 @@ class FormState:
     fieldset_stack: list[dict] = field(default_factory=list)
     radio_checkbox_groups: dict[tuple[str, str], dict] = field(default_factory=dict)
     form_depth: int = 0
+    required_controls: list[dict] = field(default_factory=list)  # required-indicator (Phase 2)
+    select_stack: list[dict] = field(default_factory=list)       # select-empty-label (Phase 2)
 
 
 @dataclass
@@ -132,6 +137,7 @@ class AriaState:
     described_by_checks: list[dict] = field(default_factory=list)
     labelled_by_checks: list[dict] = field(default_factory=list)
     aria_invalid_checks: list[dict] = field(default_factory=list)
+    hidden_stack: list[bool] = field(default_factory=list)  # aria-hidden-focusable (Phase 2)
 
 
 @dataclass
@@ -157,7 +163,9 @@ class ParseContext:
         if self.tag_stack and self.tag_stack[-1] == tag:
             self.tag_stack.pop()
 
-    def in_tag(self, tag: str) -> bool:
+    def in_tag(self, tag: str | tuple[str, ...] | frozenset[str]) -> bool:
+        if isinstance(tag, (tuple, list, set, frozenset)):
+            return any(t in self.tag_stack for t in tag)
         return tag in self.tag_stack
 
     def add_violation(self, **kwargs: str | int) -> None:

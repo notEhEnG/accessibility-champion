@@ -11,6 +11,9 @@ dist/
 .venv/
 venv/
 
+# Generated extractor sidecars
+*.extract-map.json
+
 # Local planning artifacts and archives (not for publication)
 ROADMAP.md
 phases/

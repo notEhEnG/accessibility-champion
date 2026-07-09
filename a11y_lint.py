@@ -10,6 +10,7 @@ import sys
 import json
 import re
 import argparse
+import glob as globmod
 from pathlib import Path
 from html.parser import HTMLParser
 
@@ -18,6 +19,8 @@ from collections import defaultdict
 from a11y_context import ParseContext, TagAttrs, Violation
 from a11y_focus import check_focus_visible
 from a11y_rules import all_rules
+from a11y_extract import detect_extractor, extract_file, write_sidecar
+from a11y_mapping import remap_violations
 
 SEVERITY_WEIGHTS = {"critical": 20, "serious": 10, "moderate": 5, "minor": 2}
 RULE_SCORE_ABSOLUTE_MAX = 30
@@ -140,6 +143,22 @@ def main():
         action="store_true",
         help="Merge axe-core rendered audit results when Node.js and axe-core are available",
     )
+    parser.add_argument(
+        "--extract",
+        action="store_true",
+        help="Extract HTML from framework templates (.tsx/.jsx/.vue/.svelte/.component.html) before linting",
+    )
+    parser.add_argument(
+        "--glob",
+        dest="glob_pattern",
+        action="store_true",
+        help="Treat each argument as a glob pattern (expanded recursively) before linting",
+    )
+    parser.add_argument(
+        "--no-sidecar",
+        action="store_true",
+        help="Skip writing the *.extract-map.json sidecar during extraction",
+    )
 
     args = parser.parse_args()
     if args.fragment and args.full_page:
@@ -147,30 +166,58 @@ def main():
 
     fragment = True if args.fragment else False if args.full_page else None
 
+    paths: list[str] = []
+    for item in args.files:
+        if args.glob_pattern:
+            paths.extend(sorted(globmod.glob(item, recursive=True)))
+        else:
+            paths.append(item)
+
     results = []
     has_errors = False
 
-    for path in args.files:
+    for path in paths:
+        path_obj = Path(path)
+        extractor = detect_extractor(path_obj)
+        use_extract = args.extract or (
+            extractor is not None and path_obj.suffix.lower() not in (".html", ".htm")
+        )
         try:
-            source = Path(path).read_text(encoding="utf-8")
+            if use_extract and extractor is not None:
+                result = extract_file(path_obj)
+                violations = check_html(
+                    result.html,
+                    fragment=result.fragment if result.fragment else fragment,
+                )
+                violations = remap_violations(violations, result.mappings, result.source_file)
+                if not args.no_sidecar:
+                    write_sidecar(result)
+                file_key = result.source_file
+            else:
+                source = path_obj.read_text(encoding="utf-8")
+                violations = check_html(source, fragment=fragment)
+                if args.axe:
+                    from a11y_axe import merge_axe_results
+
+                    violations = merge_axe_results(path_obj, violations)
+                file_key = path
         except FileNotFoundError:
             print(f"File not found: {path}", file=sys.stderr)
             has_errors = True
             continue
+        except ValueError as exc:
+            print(exc, file=sys.stderr)
+            has_errors = True
+            continue
 
-        violations = check_html(source, fragment=fragment)
-        if args.axe:
-            from a11y_axe import merge_axe_results
-
-            violations = merge_axe_results(Path(path), violations)
         s = score(violations)
-        results.append({"file": path, "score": s, "violations": violations})
+        results.append({"file": file_key, "score": s, "violations": violations})
 
         if violations:
             has_errors = True
 
         if not args.json:
-            print(format_report(path, violations, s))
+            print(format_report(file_key, violations, s))
 
     if args.json:
         print(json.dumps(results, indent=2))

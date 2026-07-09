@@ -141,3 +141,72 @@ class TableRule(A11yRule):
                     wcag="1.3.1 Info and Relationships",
                 )
         ctx.tables.table_depth = max(0, ctx.tables.table_depth - 1)
+
+
+class LandmarkNestingRule(A11yRule):
+    """Nested <main> landmarks / duplicate role='main'."""
+
+    def on_starttag(self, ctx: ParseContext, tag: str, attrs: TagAttrs, line: int) -> None:
+        if tag != "main" and attrs.get_lower("role") != "main":
+            return
+        if ctx.page.main_depth > 0:
+            ctx.add_violation(
+                id="landmark-nesting",
+                severity="serious",
+                line=line,
+                message="<main> landmark nested inside another <main>",
+                fix="Use only one <main> per page; use <section> for sub-regions",
+                wcag="1.3.1 Info and Relationships",
+            )
+        ctx.page.main_depth += 1
+
+    def on_endtag(self, ctx: ParseContext, tag: str) -> None:
+        if tag == "main":
+            ctx.page.main_depth = max(0, ctx.page.main_depth - 1)
+
+
+class EmptyHeadingRule(A11yRule):
+    """<h1>-<h6> with no text content."""
+
+    def on_starttag(self, ctx: ParseContext, tag: str, attrs: TagAttrs, line: int) -> None:
+        if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
+            ctx.page.heading_buffers[line] = {"tag": tag, "text": ""}
+
+    def on_data(self, ctx: ParseContext, data: str) -> None:
+        for buf in ctx.page.heading_buffers.values():
+            buf["text"] += data
+
+    def finalize(self, ctx: ParseContext) -> None:
+        for line, buf in ctx.page.heading_buffers.items():
+            if not buf["text"].strip():
+                ctx.add_violation(
+                    id="empty-heading",
+                    severity="moderate",
+                    line=line,
+                    message=f"<{buf['tag']}> has no text content",
+                    fix="Add visible heading text, or aria-label if intentionally hidden",
+                    wcag="1.3.1 Info and Relationships",
+                )
+
+
+class ListStructureRule(A11yRule):
+    """Three or more consecutive links in bare <div>s (heuristic)."""
+
+    def on_starttag(self, ctx: ParseContext, tag: str, attrs: TagAttrs, line: int) -> None:
+        if tag == "a" and ctx.in_tag("div") and not ctx.in_tag(("ul", "ol", "nav")):
+            ctx.page.anchor_streak += 1
+            if ctx.page.anchor_streak == 3:
+                ctx.add_violation(
+                    id="list-structure",
+                    severity="moderate",
+                    line=line,
+                    message="Three or more consecutive links in bare <div>s (heuristic) — consider <ul>/<nav>",
+                    fix="Wrap navigation links in <ul> or <nav>",
+                    wcag="1.3.1 Info and Relationships",
+                )
+        elif tag in ("div", "p", "section"):
+            ctx.page.anchor_streak = 0
+
+    def on_endtag(self, ctx: ParseContext, tag: str) -> None:
+        if tag in ("div", "nav", "ul", "ol"):
+            ctx.page.anchor_streak = 0

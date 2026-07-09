@@ -59,3 +59,23 @@ class DocumentTitleRule(A11yRule):
                 fix="Add <title>Page name — Site name</title> inside <head>",
                 wcag="2.4.2 Page Titled",
             )
+
+
+class LangSubtagRule(A11yRule):
+    """Inline lang attribute that is too short to be a valid BCP 47 tag (heuristic)."""
+
+    def on_starttag(self, ctx: ParseContext, tag: str, attrs: TagAttrs, line: int) -> None:
+        if tag not in ("span", "p", "div", "i", "em"):
+            return
+        lang = attrs.get("lang")
+        if not lang:
+            return
+        if len(lang) < 2:
+            ctx.add_violation(
+                id="lang-subtag",
+                severity="minor",
+                line=line,
+                message=f'Inline lang="{lang}" may be invalid (heuristic)',
+                fix='Use a valid BCP 47 language tag, e.g. lang="es" or lang="zh-Hans"',
+                wcag="3.1.2 Language of Parts",
+            )

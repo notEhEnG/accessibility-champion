@@ -50,3 +50,21 @@ class FrameRule(A11yRule):
                 fix='Add title="Description of iframe content" to the <iframe>',
                 wcag="2.4.1 Bypass Blocks",
             )
+
+
+class DecorativeImgRoleRule(A11yRule):
+    """Decorative image (alt="") missing role='presentation' (advisory)."""
+
+    def on_starttag(self, ctx: ParseContext, tag: str, attrs: TagAttrs, line: int) -> None:
+        if tag != "img":
+            return
+        alt = attrs.get("alt")
+        if alt is not None and alt.strip() == "" and attrs.get_lower("role") != "presentation":
+            ctx.add_violation(
+                id="decorative-img-role",
+                severity="minor",
+                line=line,
+                message='Decorative image with alt="" should include role="presentation" (advisory)',
+                fix='Add role="presentation", or confirm alt="" is intentional for decorative images',
+                wcag="1.1.1 Non-text Content",
+            )

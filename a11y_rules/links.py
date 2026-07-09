@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from a11y_context import ParseContext, TagAttrs
 from a11y_rules.base import (
     A11yRule,
@@ -116,3 +118,42 @@ class LinkNameRule(A11yRule):
 
             ctx.links.current_link = None
         ctx.links.link_depth = max(0, ctx.links.link_depth - 1)
+
+
+_FILENAME_RE = re.compile(r"\.(pdf|docx?|xlsx?|zip|png|jpe?g|gif)\b", re.I)
+
+
+class EmptyLinkRule(A11yRule):
+    """<a> with no meaningful href destination."""
+
+    def on_starttag(self, ctx: ParseContext, tag: str, attrs: TagAttrs, line: int) -> None:
+        if tag != "a":
+            return
+        href = (attrs.get("href") or "").strip()
+        if not href or href == "#":
+            ctx.add_violation(
+                id="empty-link",
+                severity="moderate",
+                line=line,
+                message="<a> has no meaningful href destination",
+                fix='Use a real URL or href="#section-id" with descriptive text',
+                wcag="2.4.4 Link Purpose (In Context)",
+            )
+
+
+class FilenameLinkTextRule(A11yRule):
+    """Link text that is just a filename (heuristic). Runs before LinkNameRule clears state."""
+
+    def on_endtag(self, ctx: ParseContext, tag: str) -> None:
+        if tag != "a" or ctx.links.link_depth != 1 or not ctx.links.current_link:
+            return
+        text = ctx.links.current_link["text"].strip()
+        if text and _FILENAME_RE.search(text):
+            ctx.add_violation(
+                id="filename-link-text",
+                severity="minor",
+                line=ctx.links.current_link["line"],
+                message=f'Link text "{text}" looks like a filename (heuristic)',
+                fix="Describe the link purpose, not the file name",
+                wcag="2.4.4 Link Purpose (In Context)",
+            )

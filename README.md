@@ -62,6 +62,9 @@ a11y-lint demo/passing_page.html  # exits 0 — score 100/100
 | `--fragment` | Treat input as an HTML fragment; skip full-page landmark and single-`<h1>` checks |
 | `--full-page` | Force full-page mode even when `<html>` / `<body>` tags are absent |
 | `--axe` | Merge axe-core results when Node.js and `axe-core` + `jsdom` are installed (see below) |
+| `--extract` | Extract HTML from framework templates (`.tsx`, `.jsx`, `.vue`, `.svelte`, `.component.html`) before linting |
+| `--glob` | Treat each argument as a glob pattern, expanded recursively (CI batch mode) |
+| `--no-sidecar` | Skip writing the `*.extract-map.json` sidecar during extraction |
 
 **Auto-detection:** When neither `--fragment` nor `--full-page` is passed, the linter treats markup as a **fragment** unless it contains an `<html>` or `<body>` tag. Full-page landmark checks (`<main>`, `<header>`, `<nav>`, `<footer>`, single `<h1>`) only run in full-page mode.
 
@@ -75,6 +78,47 @@ a11y-lint path/to/fragment.html --fragment
 # Static + rendered audit (requires Node.js)
 npm install axe-core jsdom
 a11y-lint path/to/your/file.html --axe
+```
+
+### Linting React / Vue / Svelte / Angular templates
+
+The extractor pulls HTML-like markup out of framework component files, lints it, then **remaps
+each violation's line number back to the original source file**. A sidecar JSON records the mapping.
+
+| Extension | Extractor |
+|-----------|-----------|
+| `.html`, `.htm` | Passthrough (identity mapping) |
+| `.tsx`, `.jsx` | First JSX `return ( … )` block |
+| `.vue` | `<template>` block |
+| `.svelte` | Markup outside `<script>` / `<style>` |
+| `.component.html` | Full Angular template |
+
+```bash
+# Single component with extraction + sidecar
+a11y-lint src/LoginForm.tsx --extract --json
+
+# Skip the sidecar write
+a11y-lint src/LoginForm.vue --extract --no-sidecar
+
+# Batch a whole tree (each arg is a glob pattern)
+a11y-lint --glob 'src/**/*.tsx'
+
+# Partial component template without <html>/<body>
+a11y-lint src/Card.vue --extract --fragment
+```
+
+Non-HTML extensions are extracted automatically even without `--extract`. Reported `line` values
+refer to the **source file** after remapping. The sidecar (`<source>.extract-map.json`) has the shape:
+
+```json
+{
+  "version": 1,
+  "phase": "2",
+  "sourceFile": "src/LoginForm.tsx",
+  "extractedFile": "src/LoginForm.tsx.extracted.html",
+  "fragment": true,
+  "mappings": [{ "extractedLine": 3, "sourceLine": 47, "tag": "input" }]
+}
 ```
 
 ### Exit Codes
@@ -171,6 +215,7 @@ No single rule can deduct more than **−30** points. The total score is still c
 | `video-captions` | `<video>` missing `<track kind="captions">` |
 | `audio-transcript` | `<audio>` without nearby transcript link/text (heuristic) |
 | `document-title` | Full page missing non-empty `<title>` in `<head>` |
+| `decorative-img-role` | Decorative `alt=""` image missing `role="presentation"` (advisory) |
 
 ### Pillar 2 — Operable
 
@@ -183,6 +228,8 @@ No single rule can deduct more than **−30** points. The total score is still c
 | `tabindex-positive` | Any `tabindex` value greater than 0 |
 | `button-type-missing` | `<button>` inside `<form>` without explicit `type` attribute |
 | `target-blank-no-warning` | `target="_blank"` without accessible new-window warning |
+| `empty-link` | `<a>` with no meaningful `href` (missing or `href="#"`) |
+| `filename-link-text` | Link text that is just a filename (`report.pdf`) (heuristic) |
 
 Focus-outline analysis parses CSS rule blocks inside `<style>` elements and inline `style=""` attributes. It matches base selectors (e.g., `.btn`) to companion `:focus-visible` rules that restore a visible outline.
 
@@ -195,6 +242,9 @@ Focus-outline analysis parses CSS rule blocks inside `<style>` elements and inli
 | `placeholder-as-label` | `placeholder` used without a real label or `aria-label` |
 | `input-autocomplete` | Personal-data inputs (`email`, `password`, `tel`, or `name`/`address`-like fields) missing `autocomplete` |
 | `aria-invalid-no-desc` | `aria-invalid="true"` without `aria-describedby` pointing to an error element |
+| `required-indicator` | `required` / `aria-required` control without a visible required indicator (heuristic) |
+| `select-empty-label` | `<select>` using an empty first `<option>` as its sole label |
+| `lang-subtag` | Inline `lang` attribute too short to be a valid BCP 47 tag (heuristic) |
 
 Applies to `<input>`, `<select>`, and `<textarea>`.
 
@@ -215,6 +265,11 @@ Applies to `<input>`, `<select>`, and `<textarea>`.
 | `missing-header-landmark` | Full page missing `<header>` / `role="banner"` |
 | `missing-nav-landmark` | Full page missing `<nav>` / `role="navigation"` |
 | `missing-footer-landmark` | Full page missing `<footer>` / `role="contentinfo"` |
+| `landmark-nesting` | `<main>` nested inside another `<main>` / duplicate `role="main"` |
+| `empty-heading` | `<h1>`–`<h6>` with no text content |
+| `list-structure` | 3+ consecutive links in bare `<div>`s (heuristic) — use `<ul>`/`<nav>` |
+| `aria-hidden-focusable` | Focusable element inside an `aria-hidden="true"` subtree |
+| `redundant-role` | Redundant role restating an implicit role (`role="button"` on `<button>`) |
 
 Presentation tables (`role="presentation"`) are exempt from table header/caption checks.
 
@@ -255,10 +310,10 @@ Agents load `SKILL.md` as context; keeping it in sync with the linter avoids sta
 ## Running Tests
 
 ```bash
-python3 -m unittest test_a11y_lint -v
+python3 -m unittest test_a11y_lint test_a11y_extract test_phase2 -v
 ```
 
-The suite covers fixture pages, individual rules, CLI behavior, fragment mode, scoring caps, axe mapping, and edge cases (54 tests). **Every new rule must include tests** that verify both failing and passing markup.
+The suite covers fixture pages, individual rules, CLI behavior, fragment mode, scoring caps, axe mapping, framework extraction, and edge cases (78 tests). **Every new rule must include tests** that verify both failing and passing markup.
 
 With dev dependencies installed:
 
@@ -296,9 +351,12 @@ Always supplement this tool with screen reader testing, keyboard navigation audi
 | `a11y_rules/` | Individual accessibility rule implementations |
 | `a11y_focus.py` | CSS focus-outline checks for `<style>` blocks and inline styles |
 | `a11y_axe.py` | Optional axe-core merge (`--axe`) |
+| `a11y_extract.py` | Framework-template HTML extractors (`--extract`) |
+| `a11y_mapping.py` | Line-mapping model and `*.extract-map.json` sidecar I/O |
+| `fixtures/` | Framework-template fixtures (`.tsx`, `.vue`, `.svelte`, `.component.html`) |
 | `demo/broken_page.html` | Fixture demonstrating failing checks |
 | `demo/passing_page.html` | Fixture demonstrating passing checks |
-| `test_a11y_lint.py` | Automated test suite |
+| `test_a11y_lint.py`, `test_a11y_extract.py`, `test_phase2.py` | Automated test suite |
 | `SKILL.md` | AI agent integration guidelines — update when rule IDs or CLI flags change |
 
 ## Roadmap

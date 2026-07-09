@@ -87,3 +87,53 @@ class DuplicateIdRule(A11yRule):
                 fix="Ensure all id attributes on the page are unique",
                 wcag="4.1.1 Parsing",
             )
+
+
+_FOCUSABLE_TAGS = frozenset({"a", "button", "input", "select", "textarea"})
+_REDUNDANT_ROLES = frozenset({
+    ("button", "button"),
+    ("a", "link"),
+    ("input", "textbox"),
+    ("img", "img"),
+})
+
+
+class AriaHiddenFocusableRule(A11yRule):
+    """Focusable element inside an aria-hidden='true' subtree."""
+
+    def on_starttag(self, ctx: ParseContext, tag: str, attrs: TagAttrs, line: int) -> None:
+        is_hidden = attrs.get_lower("aria-hidden") == "true"
+        ctx.aria.hidden_stack.append(is_hidden)
+        if any(ctx.aria.hidden_stack) and tag in _FOCUSABLE_TAGS:
+            if tag == "input" and attrs.get_lower("type") == "hidden":
+                return
+            ctx.add_violation(
+                id="aria-hidden-focusable",
+                severity="serious",
+                line=line,
+                message='Focusable element inside an aria-hidden="true" subtree',
+                fix="Remove aria-hidden from the ancestor or remove focusable content from the hidden subtree",
+                wcag="4.1.2 Name, Role, Value",
+            )
+
+    def on_endtag(self, ctx: ParseContext, tag: str) -> None:
+        if ctx.aria.hidden_stack:
+            ctx.aria.hidden_stack.pop()
+
+
+class RedundantRoleRule(A11yRule):
+    """role='button' on <button>, etc. — implicit role restated."""
+
+    def on_starttag(self, ctx: ParseContext, tag: str, attrs: TagAttrs, line: int) -> None:
+        role = attrs.get_lower("role")
+        if not role:
+            return
+        if (tag, role) in _REDUNDANT_ROLES:
+            ctx.add_violation(
+                id="redundant-role",
+                severity="minor",
+                line=line,
+                message=f'Redundant role="{role}" on <{tag}> (implicit role)',
+                fix=f'Remove role="{role}" from the native <{tag}>',
+                wcag="4.1.2 Name, Role, Value",
+            )
